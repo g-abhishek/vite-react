@@ -10,7 +10,7 @@ function App() {
         <div className="side-bar">
           <Link to={"/tic-tac-toe"}>Tic Tac Toe</Link>
         </div>
-        <div className="content">
+        <div className="main-content">
           <Routes>
             <Route path="/tic-tac-toe" element={<TicTakToe />} />
           </Routes>
