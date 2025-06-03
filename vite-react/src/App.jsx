@@ -6,7 +6,7 @@ import { Link, Route, Routes } from "react-router-dom";
 function App() {
   return (
     <>
-      <div className="main-container">
+      <div className="main-layout">
         <div className="side-bar">
           <Link to={"/tic-tac-toe"}>Tic Tac Toe</Link>
         </div>

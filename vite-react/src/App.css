@@ -42,12 +42,11 @@
   color: #888;
 }
 
-.main-container {
+.main-layout {
   display: grid;
   grid-template-columns: 270px auto;
 
-  min-width: 100vh;
-  min-height: 100vh;
+  height: 100vh;
 
   .side-bar {
     background: black;
