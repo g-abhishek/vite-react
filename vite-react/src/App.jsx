@@ -11,6 +11,7 @@ function App() {
     <>
       <div className="main-layout">
         <div className="side-bar">
+          <Link to={"/"}>Home</Link>
           <Link to={"/tic-tac-toe"}>Tic Tac Toe</Link>
           <Link to={"/use-callback"}>Use Callback Example</Link>
           <Link to={"/use-memo"}>Use Memo Example</Link>
