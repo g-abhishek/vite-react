@@ -2,6 +2,7 @@ import { useState } from "react";
 import "./App.css";
 import TicTakToe from "./components/TicTacToe";
 import { Link, Route, Routes } from "react-router-dom";
+import Counter from "./components/Counter";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <div className="main-content">
           <Routes>
             <Route path="/tic-tac-toe" element={<TicTakToe />} />
+            <Route path="/" element={<Counter />} />
           </Routes>
         </div>
       </div>
