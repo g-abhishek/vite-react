@@ -5,7 +5,7 @@ const getPagination = ({ selectedPage, totalPages }) => {
   let arr = [];
 
   if (totalPages <= 7) {
-    arr = Array.from({ length: 7 }, (_, i) => i + 1);
+    arr = Array.from({ length: totalPages }, (_, i) => i + 1);
   } else if (selectedPage <= 3) {
     arr = [1, 2, 3, 4, "...", totalPages];
   } else if (selectedPage >= totalPages - 2) {
@@ -33,7 +33,7 @@ const getPagination = ({ selectedPage, totalPages }) => {
 };
 
 const Pagination = () => {
-  const [totalItems] = useState(7);
+  const [totalItems] = useState(100);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
@@ -74,8 +74,9 @@ const Pagination = () => {
             </button>
 
             {getPagination({ selectedPage: currentPage, totalPages }).map(
-              (p) => (
+              (p, i) => (
                 <p
+                  key={i}
                   className={currentPage === p ? "active" : ""}
                   onClick={() =>
                     typeof p === "number" ? onPageChange({ pageNumber: p }) : {}
