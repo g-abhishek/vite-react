@@ -2,7 +2,7 @@ import { useState } from "react";
 import "./index.css";
 
 const Pagination = () => {
-  const [totalPages] = useState(1000);
+  const [totalItems] = useState(1000);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
 
@@ -24,17 +24,26 @@ const Pagination = () => {
         <h2>Page Size: {pageSize}</h2>
 
         <div className="pagination-footer">
-          <div>Showing 0 to 10 of {totalPages}</div>
+          <div>
+            Showing {pageSize * currentPage - pageSize} to{" "}
+            {pageSize * currentPage} of {totalItems}
+          </div>
 
           <div className="pagination-actions">
-            <button onClick={() => onPageChange({ action: "previous" })}>
+            <button
+              disabled={currentPage <= 1}
+              onClick={() => onPageChange({ action: "previous" })}
+            >
               Previous
             </button>
             <p onClick={() => onPageChange({ pageNumber: 1 })}>1</p>
             <p onClick={() => onPageChange({ pageNumber: 2 })}>2</p>
             <p>...</p>
             <p onClick={() => onPageChange({ pageNumber: 100 })}>100</p>
-            <button onClick={() => onPageChange({ action: "next" })}>
+            <button
+              disabled={currentPage >= Math.ceil(totalItems / pageSize)}
+              onClick={() => onPageChange({ action: "next" })}
+            >
               Next
             </button>
           </div>
