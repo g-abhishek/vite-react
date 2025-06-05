@@ -61,7 +61,7 @@ const Pagination = () => {
 
         <div className="pagination-footer">
           <div>
-            Showing {pageSize * currentPage - pageSize} to{" "}
+            Showing {(currentPage - 1) * pageSize + 1} to{" "}
             {pageSize * currentPage} of {totalItems}
           </div>
 
