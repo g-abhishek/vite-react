@@ -33,7 +33,7 @@ const getPagination = ({ selectedPage, totalPages }) => {
 };
 
 const Pagination = () => {
-  const [totalItems] = useState(100);
+  const [totalItems] = useState(95);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
@@ -62,7 +62,7 @@ const Pagination = () => {
         <div className="pagination-footer">
           <div>
             Showing {(currentPage - 1) * pageSize + 1} to{" "}
-            {pageSize * currentPage} of {totalItems}
+            {Math.min(pageSize * currentPage, totalItems)} of {totalItems}
           </div>
 
           <div className="pagination-actions">
