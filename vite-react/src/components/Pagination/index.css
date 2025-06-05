@@ -15,7 +15,22 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 12px;
-
+    gap: 4px;
     font-weight: bold;
+
+    > p {
+        min-width: 35px;
+        height: 35px;
+        cursor: pointer;
+        border-radius: 20px;
+
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .active {
+        background: #1a1a1a;
+    }
 }

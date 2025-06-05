@@ -76,6 +76,7 @@ const Pagination = () => {
             {getPagination({ selectedPage: currentPage, totalPages }).map(
               (p) => (
                 <p
+                  className={currentPage === p ? "active" : ""}
                   onClick={() =>
                     typeof p === "number" ? onPageChange({ pageNumber: p }) : {}
                   }
