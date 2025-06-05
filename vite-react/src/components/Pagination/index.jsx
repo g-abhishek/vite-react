@@ -1,10 +1,46 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./index.css";
 
+const getPagination = ({ selectedPage, totalPages }) => {
+  let arr = [];
+
+  if (totalPages <= 7) {
+    arr = Array.from({ length: 7 }, (_, i) => i + 1);
+  } else if (selectedPage <= 3) {
+    arr = [1, 2, 3, 4, "...", totalPages];
+  } else if (selectedPage >= totalPages - 2) {
+    arr = [
+      1,
+      "...",
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ];
+  } else {
+    arr = [
+      1,
+      "...",
+      selectedPage - 1,
+      selectedPage,
+      selectedPage + 1,
+      "...",
+      totalPages,
+    ];
+  }
+
+  return arr;
+};
+
 const Pagination = () => {
-  const [totalItems] = useState(1000);
+  const [totalItems] = useState(7);
+  const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
+
+  useEffect(() => {
+    setTotalPages(() => Math.ceil(totalItems / pageSize));
+  }, [totalItems, currentPage, pageSize]);
 
   // action = next, previous. number
   const onPageChange = ({ action, pageNumber = 1 }) => {
@@ -36,10 +72,19 @@ const Pagination = () => {
             >
               Previous
             </button>
-            <p onClick={() => onPageChange({ pageNumber: 1 })}>1</p>
-            <p onClick={() => onPageChange({ pageNumber: 2 })}>2</p>
-            <p>...</p>
-            <p onClick={() => onPageChange({ pageNumber: 100 })}>100</p>
+
+            {getPagination({ selectedPage: currentPage, totalPages }).map(
+              (p) => (
+                <p
+                  onClick={() =>
+                    typeof p === "number" ? onPageChange({ pageNumber: p }) : {}
+                  }
+                >
+                  {p}
+                </p>
+              )
+            )}
+
             <button
               disabled={currentPage >= Math.ceil(totalItems / pageSize)}
               onClick={() => onPageChange({ action: "next" })}
