@@ -6,6 +6,7 @@ import Counter from "./components/Counter";
 import UseCallback from "./components/UseCallback";
 import UseMemo from "./components/UseMemo";
 import UseLayoutEffect from "./components/UseLayoutEffect";
+import Pagination from "./components/Pagination";
 
 function App() {
   return (
@@ -17,9 +18,11 @@ function App() {
           <Link to={"/use-callback"}>Use Callback Example</Link>
           <Link to={"/use-memo"}>Use Memo Example</Link>
           <Link to={"/use-layout-effect"}>Use Layout Effect Example</Link>
+          <Link to={"/pagination"}>Pagination</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/pagination" element={<Pagination />} />
             <Route path="/use-layout-effect" element={<UseLayoutEffect />} />
             <Route path="/use-memo" element={<UseMemo />} />
             <Route path="/use-callback" element={<UseCallback />} />

@@ -1,0 +1,21 @@
+.container {
+    width: 100%;
+}
+
+.pagination-footer {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    
+    width: 100%;
+}
+
+.pagination-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+
+    font-weight: bold;
+}
