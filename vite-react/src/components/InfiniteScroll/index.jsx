@@ -1,10 +1,17 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
 
 const InfiniteScroll = () => {
+  const skipRef = useRef(0);
+  const loading = useRef(false);
   const [posts, setPosts] = useState([]);
-  const fetchPosts = async ({ skip = 0, limit = 10 }) => {
+  // const [loading, setLoading] = useState(false);
+
+  const fetchPosts = useCallback(async ({ skip = 0, limit = 20 }) => {
+    // if (loading) return false;
+
+    // setLoading(true);
     const res = await axios.get(
       `https://dummyjson.com/products?limit=${limit}&skip=${skip}`,
       {
@@ -15,21 +22,52 @@ const InfiniteScroll = () => {
     );
 
     const { products } = res.data;
+    setPosts((posts) => [...posts, ...products]);
+    skipRef.current = skipRef.current + limit;
 
-    setPosts(products);
-  };
+    // setLoading(false);
+  }, []);
 
   useEffect(() => {
-    fetchPosts({ page: 1, limit: 20 });
+    console.log("useEffect 1===========");
+    fetchPosts({ skip: skipRef.current });
   }, []);
+
+  useEffect(() => {
+    const handleScroll = async () => {
+      if (loading.current) return false;
+
+      const screenHeight = window.innerHeight;
+      const tillScrolled = window.scrollY;
+      const totalScrollingHeight = document.body.scrollHeight;
+
+      const nearBottom =
+        screenHeight + tillScrolled > totalScrollingHeight - 500;
+      if (nearBottom && !loading.current) {
+        loading.current = true;
+        await fetchPosts({ skip: skipRef.current });
+        loading.current = false;
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [fetchPosts]);
+  /**
+   * React's useEffect has a simple contract:
+   *  | “Declare all variables and functions used inside the effect in the dependency array.”
+   */
 
   return (
     <>
       <div className="container">
         {posts?.map((post) => (
-          <div className="card">
+          <div key={post.id} className="card">
             <div className="card-image">
-              <div className="image-container"></div>
+              <div className="image-container">{post?.id}</div>
             </div>
             <div className="card-body">
               <p className="card-title">{post.title}</p>
