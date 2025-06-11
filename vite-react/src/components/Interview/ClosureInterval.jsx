@@ -16,7 +16,7 @@ const ClosureInterval = () => {
       console.log("Interval cleared");
       clearInterval(interval);
     };
-  }, [cunt]); // add "count" here to fix the closure issue
+  }, []); // add "count" here to fix the closure issue
 
   return (
     <div>
