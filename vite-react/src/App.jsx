@@ -8,6 +8,7 @@ import UseMemo from "./components/UseMemo";
 import UseLayoutEffect from "./components/UseLayoutEffect";
 import Pagination from "./components/Pagination";
 import InfiniteScroll from "./components/InfiniteScroll";
+import ClosureInterval from "./components/Interview/ClosureInterval";
 
 function App() {
   return (
@@ -21,9 +22,13 @@ function App() {
           <Link to={"/use-layout-effect"}>Use Layout Effect Example</Link>
           <Link to={"/pagination"}>Pagination</Link>
           <Link to={"/infinite-scroll"}>InfiniteScroll</Link>
+
+          <div>Interview</div>
+          <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/closure-interval" element={<ClosureInterval />} />
             <Route path="/infinite-scroll" element={<InfiniteScroll />} />
             <Route path="/pagination" element={<Pagination />} />
             <Route path="/use-layout-effect" element={<UseLayoutEffect />} />
