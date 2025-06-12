@@ -1,5 +1,7 @@
 \l - List DATABASE
 \c - Select DATABASE
+\d - describe TABLE
+\q - exit
 
 CREATE DATABASE employee_db;
 
