@@ -9,6 +9,7 @@ import Pagination from "./components/Pagination";
 import InfiniteScroll from "./components/InfiniteScroll";
 import ClosureInterval from "./components/Interview/ClosureInterval";
 import LazyloadingImage from "./components/LazyloadingImage";
+import ContextAPI from "./components/ContextAPI";
 
 function App() {
   return (
@@ -23,12 +24,14 @@ function App() {
           <Link to={"/pagination"}>Pagination</Link>
           <Link to={"/infinite-scroll"}>InfiniteScroll</Link>
           <Link to={"/lazy-loading-image"}>LazyloadingImage</Link>
+          <Link to={"/context-api"}>Context API</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/context-api" element={<ContextAPI />} />
             <Route path="/lazy-loading-image" element={<LazyloadingImage />} />
             <Route path="/closure-interval" element={<ClosureInterval />} />
             <Route path="/infinite-scroll" element={<InfiniteScroll />} />
