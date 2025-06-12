@@ -10,6 +10,7 @@ import InfiniteScroll from "./components/InfiniteScroll";
 import ClosureInterval from "./components/Interview/ClosureInterval";
 import LazyloadingImage from "./components/LazyloadingImage";
 import ContextAPI from "./components/ContextAPI";
+import UseReducerComponent from "./components/UseReducerComponent";
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Link to={"/pagination"}>Pagination</Link>
           <Link to={"/infinite-scroll"}>InfiniteScroll</Link>
           <Link to={"/lazy-loading-image"}>LazyloadingImage</Link>
+          <Link to={"/use-reducer"}>UseReducer</Link>
           <Link to={"/context-api"}>Context API</Link>
 
           <div>Interview</div>
@@ -32,6 +34,7 @@ function App() {
         <div className="main-content">
           <Routes>
             <Route path="/context-api" element={<ContextAPI />} />
+            <Route path="/use-reducer" element={<UseReducerComponent />} />
             <Route path="/lazy-loading-image" element={<LazyloadingImage />} />
             <Route path="/closure-interval" element={<ClosureInterval />} />
             <Route path="/infinite-scroll" element={<InfiniteScroll />} />
