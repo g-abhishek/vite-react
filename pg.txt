@@ -1,0 +1,183 @@
+\l - List DATABASE
+\c - Select DATABASE
+
+CREATE DATABASE employee_db;
+
+CREATE TABLE employees (_id SERIAL PRIMARY KEY, name TEXT, department TEXT, hire_date DATE DEFAULT CURRENT_DATE, salary INTEGER CHECK (salary > 0));
+CREATE TABLE contacts (_id SERIAL PRIMARY KEY, emp_id INT REFERENCES employees(_id), email TEXT UNIQUE NOT NULL, phone VARCHAR(15));
+
+INSERT INTO employees (name, department, salary) VALUES ('Alice Smith', 'Engineering', 85000.00);
+INSERT INTO employees (name, department, salary) VALUES ('Steve Smith', 'Engineering', 95000.00);
+INSERT INTO employees (name, department, salary) VALUES ('Bob Johnson', 'HR', 60000.00), ('Carol Wang', 'Sales', 70000.00);
+
+INSERT INTO contacts (emp_id, email, phone) VALUES (1, 'alice.smith@example.com', '123-456-7890'), (2, 'bob.johnson@example.com', '321-654-0987');
+
+SELECT employees.*, contacts.* FROM employees LEFT JOIN contacts on employees._id = contacts.emp_id;
+SELECT department, AVG(salary) FROM employees GROUP BY department;
+
+UPDATE employees SET salary = salary + 5000 WHERE _id = 1;
+DELETE FROM employees WHERE _id = 1;
+
+// **********************************************************************
+EXPLAIN ANALYZE SELECT * FROM employees;
+
+Seq Scan on employees  (cost=0.00..18396.00 rows=333333 width=44)
+  Filter: (department = 'Engineering'::text)
+  Rows Removed by Filter: 666667
+  -> actual time=0.017..145.038 rows=333316 loops=1
+Planning Time: 0.165 ms
+Execution Time: 146.134 ms
+
+| Field                    | Meaning                                           |
+| ------------------------ | ------------------------------------------------- |
+| `Seq Scan`               | Full table scan (no index used)                   |
+| `cost=0.00..18396.00`    | Estimated startup & total cost (planner estimate) |
+| `rows=333333`            | Estimated number of rows returned                 |
+| `actual time=0.017..145` | Real time to start & finish returning rows        |
+| `Rows Removed by Filter` | Rows that did not match the `WHERE` clause        |
+| `Execution Time`         | Time it took to run the entire query              |
+
+CREATE INDEX idx_department on employees(department);
+
+This will still make sequential call, as our DB onlyhave 4-5 records
+PostgreSQL’s planner made a cost-based decision.
+
+The table is very small — only 4 rows total.
+In such cases:
+    A sequential scan is cheaper (fewer disk/page reads)
+    Indexes have overhead, and small tables fit in memory
+    The planner uses statistics to estimate row counts and costs
+    So, PostgreSQL intelligently ignores the index because the benefit doesn’t outweigh the cost.
+
+
+CREATE TABLE random (_id SERIAL PRIMARY KEY, name TEXT, department TEXT, salary NUMERIC(15, 2));
+
+INSERT INTO random (name, department, salary) 
+SELECT 'Temp ' || g,
+    CASE WHEN g % 2 = 0 THEN 'Engineering' ELSE 'Sales' END,
+    (random() * 100000)::INT
+    FROM generate_series(1, 100000) g;
+
+
+JOINS ****************
+INNER JOIN - Only employees with matching emp_id in both tables:
+SELECT employees.*, contacts.* FROM employees INNER JOIN contacts on employees._id = contacts.emp_id;
+
+LEFT JOIN - Show all employees, with contact info if available
+SELECT employees.*, contacts.* FROM employees LEFT JOIN contacts ON employees._id = contacts.emp_id;
+
+FULL OUTER JOIN - Combine everything, fill in NULLs where there's no match
+SELECT employees.*, contacts.* FROM employees FULL OUTER JOIN contacts ON employees._id = contacts.emp_id;
+
+CROSS JOIN - Every combination (not commonly used)
+If you have 3 employees × 2 contacts = 6 rows (Cartesian product)
+SELECT employees.*, contacts.* FROM employees CROSS JOIN contacts;
+
+SELF JOIN - Find employees in the same department (excluding themselves)
+SELECT a.name AS emp1, b.name AS emp2, a.department FROM employees a JOIN employees b ON a.department = b.department AND a._id <> b._id;
+
+
+🔍 WHERE vs HAVING – What’s the Difference? *****************
+
+| Clause   | Filters    | Used With            | Executes **Before / After** Aggregation |
+| -------- | ---------- | -------------------- | --------------------------------------- |
+| `WHERE`  | **Rows**   | Any query            | **Before** aggregation (`GROUP BY`)     |
+| `HAVING` | **Groups** | Only with `GROUP BY` | **After** aggregation                   |
+
+CREATE TABLE orders (_id SERIAL PRIMARY KEY, customer TEXT, amount INT);
+INSERT INTO orders (customer, amount) VALUES ('Alice', 100), ('Alice', 150), ('Bob', 200), ('Carol', 80), ('Bob', 50);
+
+SELECT * FROM orders WHERE amount > 100;
+
+SELECT customer, SUM(amount) FROM orders GROUP BY customer HAVING SUM(amount) > 100;
+
+🧠 Important Notes
+    You can’t use aggregate functions in WHERE (WHERE SUM(...) is invalid).
+    HAVING is usually paired with GROUP BY.
+
+🚀 Challenge
+Try writing a query:
+    Get all customers with at least 2 orders. But only include orders over ₹100
+
+SELECT customer, COUNT(customer) FROM orders WHERE amount >= 100 GROUP BY customer HAVING count(customer) >= 2;
+
+VIEWS, STORED PROCEDURE, TRIGGERS ******************
+
+These tools—views, functions, stored procedures, and triggers—are used to build modular, maintainable, and event-driven logic inside the database.
+
+🔭 1. VIEWS - A view is a saved SQL query you can query like a table.
+🔧 Use Cases:
+    Simplify complex joins
+    Secure sensitive columns
+    Create reporting layers
+
+CREATE VIEW employee_summary AS SELECT employees._id, employees.name, employees.department, contacts.email FROM employees LEFT JOIN contacts ON employees._id = contacts.emp_id;
+
+SELECT * FROM employee_summary;
+SELECT * FROM employee_summary WHERE department = 'Engineering';
+
+🧮 2. FUNCTIONS - A function returns a value (or result set), and can be used in queries or applications.
+📌 Use Cases:
+    Reusable business logic
+    Data transformations
+    Used in SELECT, WHERE, etc.
+
+CREATE OR REPLACE FUNCTION calc_annual_salary(salary INTEGER) RETURNS INTEGER AS $$ BEGIN RETURN salary * 12; END; $$ LANGUAGE plpgsql;
+
+SELECT employees.*, calc_annual_salary(employees.salary) AS annual_salary FROM employees;
+
+🔄 3. STORED PROCEDURES - A procedure is like a function, but doesn’t return a value—instead, it performs actions (like inserts/updates) and supports transactions (e.g., COMMIT, ROLLBACK).
+🔧 Use Case:
+    Encapsulate write logic
+    Batch operations
+
+CREATE PROCEDURE increase_salary(pct NUMERIC) AS $$ BEGIN UPDATE employees SET salary = salary + (salary * pct); END; $$ LANGUAGE plpgsql;
+CALL increase_salaries(0.10);
+
+Note: CALL is used for procedures, not SELECT.
+
+⚡ 4. TRIGGERS - A trigger automatically runs a function in response to INSERT, UPDATE, or DELETE.
+🔧 Use Cases:
+    Logging
+    Auto-updates (e.g., timestamp)
+    Auditing
+    Enforcing business rules
+
+Step 1: Create audit table -------
+CREATE TABLE employee_audit (
+    emp_id INT,
+    old_salary INTEGER,
+    new_salary INTEGER,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+SELECT * FROM employee_audit;
+
+Step 2: Create trigger function -------
+CREATE OR REPLACE FUNCTION log_salary_change() RETURNS TRIGGER AS $$
+    BEGIN
+        IF NEW.salary <> OLD.salary THEN
+            INSERT INTO employee_audit (emp_id, old_salary, new_salary) VALUES (OLD._id, OLD.salary, NEW.salary);
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+Step 3: Create the trigger ----
+CREATE TRIGGER trg_salary_change 
+    AFTER UPDATE ON employees FOR EACH ROW
+    EXECUTE FUNCTION log_salary_change();
+
+UPDATE employees SET name = 'ABC' WHERE _id = 1;
+
+ emp_id | old_salary | new_salary |         changed_at         
+--------+------------+------------+----------------------------
+      1 |     455625 |       1050 | 2025-06-12 08:40:19.398067
+
+
+
+
+
+
+
+
+
