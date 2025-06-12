@@ -5,15 +5,27 @@ import Section from "./Section";
 const ContextAPI = () => {
   return (
     <>
-      <Section>
-        <Heading level={1}>Heading</Heading>
-        <Heading level={1}>Heading</Heading>
-        <Heading level={1}>Heading</Heading>
+      <Section level={1}>
+        <Heading>Heading</Heading>
+        <Heading>Heading</Heading>
+        <Heading>Heading</Heading>
 
-        <Section>
-          <Heading level={2}>Sub Heading</Heading>
-          <Heading level={2}>Sub Heading</Heading>
-          <Heading level={2}>Sub Heading</Heading>
+        <Section level={2}>
+          <Heading>Sub Heading</Heading>
+          <Heading>Sub Heading</Heading>
+          <Heading>Sub Heading</Heading>
+
+          <Section level={3}>
+            <Heading>Sub Heading</Heading>
+            <Heading>Sub Heading</Heading>
+            <Heading>Sub Heading</Heading>
+
+            <Section level={4}>
+              <Heading>Sub Heading</Heading>
+              <Heading>Sub Heading</Heading>
+              <Heading>Sub Heading</Heading>
+            </Section>
+          </Section>
         </Section>
       </Section>
     </>
