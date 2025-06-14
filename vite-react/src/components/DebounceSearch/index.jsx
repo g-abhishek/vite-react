@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { debounce } from "../../utils";
 import useDebounce from "../../hooks/useDebounce";
+import useDebounceCallback from "../../hooks/useDebounceCallback";
 
 const DebounceSearch = () => {
   const [search, setSearch] = useState("");
@@ -17,6 +18,13 @@ const DebounceSearch = () => {
       setDebouncedValue(debouncedQuery);
     }
   }, [debouncedQuery]);
+
+  // use debounce callback that will return debounced function
+  const [debouncedCallbackValue, setDebouncedCallbackValue] = useState("");
+  const debouncedFunction = useDebounceCallback((value) => {
+    // perform any operation wants to perform
+    setDebouncedCallbackValue(value);
+  }, 2000);
 
   return (
     <>
@@ -43,6 +51,22 @@ const DebounceSearch = () => {
           }}
         />
         <p>Search Text: {debouncedValue}</p>
+      </div>
+
+      <br />
+      <br />
+      <div>
+        <p>
+          useDebounceCallback Hook: this hook will only return debounced
+          function
+        </p>
+        <input
+          type="text"
+          onChange={(e) => {
+            debouncedFunction(e.target.value);
+          }}
+        />
+        <p>Search Text: {debouncedCallbackValue}</p>
       </div>
     </>
   );
