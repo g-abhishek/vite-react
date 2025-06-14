@@ -13,6 +13,7 @@ import ContextAPI from "./components/ContextAPI";
 import UseReducerComponent from "./components/UseReducerComponent";
 import ContextReducer from "./components/ContextReducer";
 import HOC from "./components/HOC";
+import CustomHook from "./components/CustomHook";
 
 function App() {
   return (
@@ -31,12 +32,14 @@ function App() {
           <Link to={"/context-api"}>Context API</Link>
           <Link to={"/context-reducer"}>Context + Reducer</Link>
           <Link to={"/hoc"}>HOC</Link>
+          <Link to={"/custom-hook"}>CustomHook</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/custom-hook" element={<CustomHook />} />
             <Route path="/hoc" element={<HOC />} />
             <Route path="/context-reducer" element={<ContextReducer />} />
             <Route path="/context-api" element={<ContextAPI />} />
