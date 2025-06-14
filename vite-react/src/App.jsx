@@ -12,6 +12,7 @@ import LazyloadingImage from "./components/LazyloadingImage";
 import ContextAPI from "./components/ContextAPI";
 import UseReducerComponent from "./components/UseReducerComponent";
 import ContextReducer from "./components/ContextReducer";
+import HOC from "./components/HOC";
 
 function App() {
   return (
@@ -29,12 +30,14 @@ function App() {
           <Link to={"/use-reducer"}>UseReducer</Link>
           <Link to={"/context-api"}>Context API</Link>
           <Link to={"/context-reducer"}>Context + Reducer</Link>
+          <Link to={"/hoc"}>HOC</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/hoc" element={<HOC />} />
             <Route path="/context-reducer" element={<ContextReducer />} />
             <Route path="/context-api" element={<ContextAPI />} />
             <Route path="/use-reducer" element={<UseReducerComponent />} />

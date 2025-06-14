@@ -10,6 +10,13 @@ const Counter = () => {
     setCounter(() => counter - 1);
   };
 
+  const saveToLocalStorage = () => {
+    localStorage.setItem("user", JSON.stringify({ _id: 1 }));
+  };
+  const removeFromLocalStorage = () => {
+    localStorage.removeItem("user");
+  };
+
   return (
     <>
       <div className="wrapper">
@@ -17,6 +24,12 @@ const Counter = () => {
         <div>
           <button onClick={onIncrement}>Increament</button>
           <button onClick={onDecrement}>Decrement</button>
+        </div>
+
+        <div>
+          Click Here to add/remove in localstorage to test HOC:{" "}
+          <button onClick={saveToLocalStorage}>Add</button>
+          <button onClick={removeFromLocalStorage}>Remove</button>
         </div>
       </div>
     </>
