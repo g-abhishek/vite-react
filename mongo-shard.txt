@@ -1,0 +1,89 @@
+docker network create mongo-net
+
+We'll manually start:
+    1. 1 Config Server replica set
+    2. 2 Shards (each a replica set)
+    3. 1 Mongos Router
+
+⚙️ Step 1: Start Config Server
+docker run -d --name configsvr -p 27019:27019 --net mongo-net mongo:7.0 mongod --configsvr --replSet cfgRS --port 27019
+
+here:- mongod --configsvr --replSet cfgRS --port 27019
+This is the actual MongoDB server startup command that runs inside the container.
+
+🔸 mongod
+This is the MongoDB daemon — the core server process.
+
+🔸 --configsvr
+Tells MongoDB to run as a config server.
+
+🔸 --replSet cfgRS
+Declares that this node belongs to a replica set named cfgRS.
+Config servers must be part of a replica set — even in dev/test.
+
+🔸 --port 27019
+Specifies the port the MongoDB instance will listen on.
+
+➤ Initialize the config server replica set:
+docker exec -it configsvr mongosh --port 27019
+> rs.initiate()
+
+🧠 What is a Config Server?
+In a MongoDB sharded cluster, config servers are special MongoDB instances that store:
+    1. Metadata about the cluster
+    2. Mapping of data to shards
+    3. Chunk information for sharded collections
+    4. Settings and sharding state
+Essentially, config servers are the brains of the cluster — without them, the cluster doesn’t know which shard holds what.
+
+🖼️ Where It Fits in Sharding
+mongos → configsvr → shards
+
+mongos uses the config server to know:
+- which data is stored in which shard
+- how chunks are distributed
+
+✅ Summary
+| Feature       | Purpose                                   |
+| ------------- | ----------------------------------------- |
+| `--configsvr` | Launches MongoDB as a config server       |
+| Must be in RS | Config servers are always in replica sets |
+| Port          | Usually 27019                             |
+
+
+⚙️ Step 2: Start Shard 1
+docker run -d --name shard1 -p 27018:27018 --net mongo-net mongo:7.0 mongod --shardsvr --replSet shard1RS --port 27018
+
+
+
+➤ Initialize shard1:
+docker exec -it shard1 mongosh --port 27018
+> rs.initiate()
+
+⚙️ Step 3: Start Shard 2
+docker run -d --name shard2 -p 27017:27017 --net mongo-net mongo:7.0 mongod --shardsvr --replSet shard2RS --port 27017
+
+➤ Initialize shard2:
+docker exec -it shard2 mongosh --port 27017
+> rs.initiate()
+
+⚙️ Step 4: Start the Mongos Router
+docker run -d --name mongos -p 27020:27020 --net mongo-net mongo:7.0 mongos --configdb cfgRS/configsvr:27019 --port 27020
+docker exec -it mongos mongosh --port 27020
+
+➕ Add shards:
+sh.addShard("shard1RS/53f1141afbae:27018")
+sh.addShard("shard2RS/884135abe8af:27017")
+
+🗃️ Step 6: Enable Sharding and Shard a Collection
+sh.enableSharding("mydb")
+sh.shardCollection("mydb.users", { userId: 1 })
+
+🧪 Step 7: Insert and Query Data
+use mydb
+for (let i = 1; i <= 1000; i++) {
+  db.users.insert({ userId: i, name: "User " + i });
+}
+
+Check shard distribution: Shows data stored per shard
+db.users.getShardDistribution()
