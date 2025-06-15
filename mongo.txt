@@ -1,0 +1,377 @@
+✅ What is MongoDB?
+MongoDB is a NoSQL document-based database. 
+It stores data in flexible, JSON-like documents (BSON) instead of rows and tables like in relational databases.
+
+// list databases
+show dbs
+
+// Create or switch to DB
+use database_name
+
+// list collections
+show collections
+
+db.users.insertOne({ name: "abhishek", age: 26 });
+db.users.find();
+db.users.findOne({_id: ObjectId("684db80062d2eee7c5782ae4")});
+db.users.update({ _id: ObjectId("684db80062d2eee7c5782ae4") }, { $set: { age: 27 } });
+db.users.deleteOne({ _id: ObjectId("684db80062d2eee7c5782ae4") })
+
+🔍 Part 2: Data Types & Document Structure (BSON)
+MongoDB uses BSON (Binary JSON) under the hood — this adds data types not present in regular JSON
+| Type       | Example                                     | Notes                  |
+| ---------- | ------------------------------------------- | ---------------------- |
+| `String`   | `"Abhishek"`                                | Most common            |
+| `Number`   | `NumberInt(26)`, `NumberLong(123456789012)` | Use right size         |
+| `Boolean`  | `true`, `false`                             | Logical checks         |
+| `Date`     | `ISODate("2024-06-14T10:00:00Z")`           | Default for timestamps |
+| `Array`    | `[1, 2, 3]`                                 | Useful for tags, lists |
+| `Object`   | `{ address: { city: "Mumbai" }}`            | Nested data            |
+| `ObjectId` | `ObjectId("507f1f77bcf86cd799439011")`      | Auto `_id`             |
+| `Null`     | `null`                                      | For optional fields    |
+
+db.users.insertOne({
+    name: "Abhishek",
+    age: 26,
+    is_active: true,
+    hobbies: ["coding", "music"],
+    address: {
+        street: "test street",
+        pincode: 421003,
+    },
+    created_by: null,
+    created_at: new Date(),
+});
+
+
+🏗️ Part 3: Schema Design in MongoDB
+Unlike SQL, MongoDB is schema-less, but that doesn't mean unstructured.
+
+🔸 Two ways to model relations:
+| Approach        | When to Use                                      | Example                             |
+| --------------- | ------------------------------------------------ | ----------------------------------- |
+| **Embedding**   | 1:1, 1\:many with tight coupling                 | User with embedded address          |
+| **Referencing** | many\:many, large or frequently updated sub-docs | User and separate Orders collection |
+
+🧠 Best Practices for Schema Design:
+1. Use embedding for high read speed if related data is always fetched together.
+2. Use referencing for large or changing datasets.
+3. Keep document size under 16MB limit.
+4. Don’t over-nest — limit nesting to ~3 levels deep.
+
+db.authors.insert(
+    [
+        {
+            name: "Abhishek",
+            email: "abhishek@email.com",
+            bio: "test bio1",
+        },
+        {
+            name: "Hansraj",
+            email: "hansraj@email.com",
+            bio: "test bio2",
+        }
+    ]
+);
+
+db.posts.insert({
+    title: "Learning MongoDB",
+    content: "Lorem ipsum test 1",
+    tags: ["db", "mongo"],
+    author_id: ObjectId("684dbc09eabc96db8f010a5a"),
+    created_at: new Date(),
+});
+db.posts.insert({
+    title: "Learning Nodejs",
+    content: "Lorem ipsum test 2",
+    tags: ["nodejs", "javascript"],
+    author_id: ObjectId("684dbc09eabc96db8f010a5a"),
+    created_at: new Date(),
+});
+db.posts.insert({
+    title: "Learning Javascript",
+    content: "Lorem ipsum test 3",
+    tags: ["javascript"],
+    author_id: ObjectId("684dbc09eabc96db8f010a5b"),
+    created_at: new Date(),
+});
+
+⚡️ Part 4: Indexing & Query Optimization
+In MongoDB, indexes are absolutely essential for high-performance queries — especially as your dataset grows.
+
+🧠 Why Use Indexes?
+Without indexes, MongoDB does a collection scan (scans every document).
+With indexes:
+    1. Queries are faster 🚀
+    2. Sorts are faster
+    3. Uniqueness can be enforced
+
+📌 Default Index: _id
+Every collection automatically has an index on _id.
+
+You can also add custom indexes:
+db.posts.createIndex({ author_id: 1 });
+db.posts.createIndex({ tags: 1 });
+db.posts.createIndex({ title: "text" }); // for text search
+
+📐 Compound Indexes
+You can index on multiple fields:
+db.posts.createIndex({ author_id: 1, created_at: -1 });
+
+Use compound indexes when you often filter/sort on multiple fields together.
+
+🧠 Rule: MongoDB can use prefixes of compound indexes.
+| Index Created           | Queries Supported              |
+| ----------------------- | ------------------------------ |
+| `{ a: 1, b: -1, c: 1 }` | ✅ `{ a: 1 }`, `{ a: 1, b: 1 }` |
+|                         | ❌ `{ b: 1 }`, `{ c: 1 }`       |
+
+
+
+db.posts.find({ tags: "javascript" }).explain("executionStats");
+
+🔎 .explain() - gives you how MongoDB plans and executes a query
+There are 3 modes:
+    1. "queryPlanner" – shows the plan without running the query.
+    2. "executionStats" – runs the query and shows performance stats.
+    3. "allPlansExecution" – shows stats for all plans considered (used in complex queries).
+
+🧪 Try This:
+1. Run the find query before indexing on tags.
+2. Then run: db.posts.createIndex({ tags: 1 });
+3. Run the same query after indexing and use .explain("executionStats") again.
+➡️ You should see:
+    1. stage changes from "COLLSCAN" to "IXSCAN"
+    2. totalDocsExamined drops drastically
+    3. executionTimeMillis reduces
+
+
+🏗️ Part 5: Aggregation Framework
+MongoDB’s most powerful feature for analytics, transformations, joins, grouping, and more. It's like SQL’s GROUP BY, JOIN, ORDER BY, WHERE, etc., all combined in a super flexible pipeline format.
+
+Aggregation in MongoDB is based on pipelines. You take documents from a collection, then pass them through a sequence of stages, each transforming the data.
+db.collection.aggregate([
+  { $match: { ... } },
+  { $group: { _id: ..., total: { $sum: ... } } },
+  { $sort: { ... } }
+])
+Each stage receives input documents and outputs transformed documents.
+
+| Stage      | Description                           |
+| ---------- | ------------------------------------- |
+| `$match`   | Filters documents (like `find`)       |
+| `$project` | Reshapes documents (select fields)    |
+| `$group`   | Groups documents, like SQL `GROUP BY` |
+| `$sort`    | Sorts documents                       |
+| `$limit`   | Limits number of output documents     |
+| `$skip`    | Skips a number of documents           |
+| `$lookup`  | Performs a JOIN                       |
+| `$unwind`  | Deconstructs an array field           |
+| `$count`   | Counts documents                      |
+
+✅ Example 1: Count posts per author
+db.posts.aggregate([
+    {
+        $group: {
+            _id: "$author_id",
+            totalPosts: { $sum: 1 } 
+        }
+    }
+])
+// result -----
+[
+  { _id: ObjectId('684dbc09eabc96db8f010a5a'), totalPosts: 2 },
+  { _id: ObjectId('684dbc09eabc96db8f010a5b'), totalPosts: 1 }
+]
+
+✅ Example 2: Get latest 2 posts with only title and author
+db.posts.aggregate([
+    {
+        $sort: { created_at: - 1 }
+    },
+    {
+        $limit: 2,
+    },
+    {
+        $project: { title: 1, author_id: 1, _id: 0 }
+    }
+])
+// result -----
+[
+  {
+    title: 'Learning Javascript',
+    author_id: ObjectId('684dbc09eabc96db8f010a5b')
+  },
+  {
+    title: 'Learning Nodejs',
+    author_id: ObjectId('684dbc09eabc96db8f010a5a')
+  }
+]
+
+✅ Example 3: Join posts with author name ($lookup)
+db.posts.aggregate([
+    {
+        $lookup: {
+            from: "authors",
+            localField: "author_id",
+            foreignField: "_id",
+            as: "author"
+        }
+    },
+    { $unwind: "$author" },
+    {
+        $project: {
+            title: 1,
+            authorName: "$author.name",
+            created_at: 1,
+        }
+    }
+])
+// result -----
+[
+  {
+    _id: ObjectId('684dbc98eabc96db8f010a5c'),
+    title: 'Learning MongoDB',
+    created_at: ISODate('2025-06-14T18:16:56.713Z'),
+    authorName: 'Abhishek'
+  },
+  {
+    _id: ObjectId('684dbcbaeabc96db8f010a5d'),
+    title: 'Learning Nodejs',
+    created_at: ISODate('2025-06-14T18:17:30.853Z'),
+    authorName: 'Abhishek'
+  },
+  {
+    _id: ObjectId('684dbcd7eabc96db8f010a5e'),
+    title: 'Learning Javascript',
+    created_at: ISODate('2025-06-14T18:17:59.211Z'),
+    authorName: 'Hansraj'
+  }
+]
+
+🧨 Part 6A: $unwind – Flattening Arrays
+✅ What does $unwind do?
+It deconstructs an array field from a document and outputs a document for each element in the array.
+
+🎯 Why use it?
+    1. For aggregation on individual array elements
+    2. To apply filters or counts on items inside arrays
+
+📦 Example Document:
+{
+  title: "Learning Nodejs",
+  tags: ["nodejs", "javascript", "backend"]
+}
+
+// this will deconstruct the tags array
+db.posts.aggregate([{$unwind: "$tags"}]);
+// result
+[
+    {
+        title: "Learning Nodejs",
+        tags: "nodejs"
+    },
+    {
+        title: "Learning Nodejs",
+        tags: "javascript"
+    },
+    {
+        title: "Learning Nodejs",
+        tags: "backend"
+    },
+]
+
+
+// Count posts tagged with "javascript"
+db.posts.aggregate([
+    {
+        $unwind: "$tags"
+    },
+    {
+        $match: {
+            tags: { $in: ["javascript"] }
+        }
+    },
+    {
+        $group: {
+            _id: "$tags",
+            totalPosts: { $sum: 1 }
+        }
+    }
+])
+
+🔍 What is Full-Text Search?
+Full-text search allows you to search for words or phrases inside text fields (like titles, content, descriptions, etc.). 
+It’s similar to how search engines work.
+
+⚙️ How MongoDB Supports Full-Text Search
+MongoDB supports basic full-text search using text indexes. 
+When you create a text index on a field, MongoDB:\
+    1. Tokenizes the text (splits into words),
+    2. Converts to lowercase,
+    3. Ignores stop words (like "the", "a", "is", etc.),
+    4. Creates an inverted index for efficient lookup.
+
+✅ Step 1: Create a Collection with Text
+db.articles.insertMany([
+  {
+    title: "Learning MongoDB",
+    content: "MongoDB is a NoSQL database that supports full-text search."
+  },
+  {
+    title: "Getting Started with Node.js",
+    content: "Node.js allows you to build scalable backend services."
+  }
+])
+
+✅ Step 2: Create a Text Index
+You can create a text index on one or multiple fields.
+db.articles.createIndex({ content: "text" });
+db.articles.createIndex({ title: "text", content: "text" });
+
+NOTE: 🧠 Important: You can only have one text index per collection.
+
+✅ Step 3: Perform a Text Search
+db.articles.find({ $text: { $search: "mongodb" } });
+This will return documents where any of the indexed fields contain the word "mongodb".
+
+🎯 Searching Multiple Terms
+🔹 Any of the words:
+db.articles.find({ $text: { $search: "mongodb nodejs" } });
+Matches articles that contain either word.
+
+🔹 Exact phrase:
+db.articles.find({ $text: { $search: "\"text search\"" } });
+Use double quotes for exact phrases.
+
+db.posts.find(
+    {
+        $text: {
+            $search: "mongodb"
+        }
+    },
+)
+This performs a text search for the word "mongodb" in fields that are part of a text index.
+
+// we have another query here
+db.posts.find(
+    {
+        $text: {
+            $search: "mongodb"
+        }
+    },
+    { score: { $meta: "textScore" }, title: 1 }
+)
+This is the projection (what fields to return):
+    1. score: { $meta: "textScore" }: includes the relevance score calculated by MongoDB.
+    2. title: 1: includes the title field
+    3. All other fields are excluded by default.
+
+documents most closely matching will have higher text relevance score
+[
+  { "title": "Getting started with MongoDB", "score": 3.5 },
+  { "title": "Advanced MongoDB features", "score": 2.1 }
+]
+
+
+
