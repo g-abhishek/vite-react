@@ -701,3 +701,98 @@ Ask yourself:
     3. Do I need all of it together or only some parts often?
     4. What’s the impact on read/write performance?
     5. What is the access pattern on the frontend?
+
+
+🚀 Part 11: MongoDB Performance Tips & Monitoring
+
+🧠 1. Indexing: Your #1 Performance Tool
+✅ Use Indexes!
+MongoDB uses indexes to avoid scanning all documents (COLLSCAN). 
+Always index fields used in:
+    1. Queries (find)
+    2. Sorts
+    3. Filters
+    4. Joins ($lookup)
+    5. Range queries
+
+🔍 Check which index is used
+db.collection.find({ name: "Abhishek" }).explain("executionStats")
+
+🧠 Tip:
+Use compound indexes when you query by multiple fields:
+db.users.createIndex({ age: 1, city: 1 })
+
+But:
+    1. Order matters
+    2. Index on { age: 1, city: 1 } supports:
+        1. ✅ { age: 25 }
+        2. ✅ { age: 25, city: "Delhi" }
+        3. ❌ { city: "Delhi" } (age is missing)
+
+🧠 2. Query Optimization
+
+✅ Use projections:
+db.users.find({}, { name: 1, _id: 0 })
+Returns only required fields — saves bandwidth and memory.
+
+✅ Avoid $where or regex without index — they’re slow.
+✅ Always profile your slow queries with:
+db.setProfilingLevel(1) // log slow ops
+db.system.profile.find().sort({ millis: -1 }).limit(5)
+
+🧠 3. Avoid Collection Scans
+Use explain() to find:
+executionStats.executionStages.stage
+If you see "COLLSCAN" → you're missing an index
+
+🧠 4. Use Capped Collections for Logs
+If you’re storing logs or events:
+db.createCollection("logs", { capped: true, size: 10485760 })
+MongoDB will auto-delete old docs once the cap is hit.
+
+🧠 5. Use Aggregation Carefully
+    1. Avoid huge $group or $lookup without indexes
+    2. Use $project early to discard unused fields
+    3. Use $merge to store large results into temp collections
+
+📊 6. Monitoring MongoDB (Tools)
+💻 A. mongostat
+> mongostat --port 27017
+
+Shows live stats like:
+    1. Ops/sec
+    2. Connections
+    3. Memory usage
+    4. Lock %
+
+📈 B. mongotop
+> mongotop
+Shows time spent reading/writing per collection.
+
+🔍 C. Use db.serverStatus()
+Shows:
+    1. Memory stats
+    2. Connections
+    3. Cursors
+    4. WiredTiger cache usage
+    5. Index usage
+
+🛠️ Bonus Performance Tips
+| 🔧 Tip                                       | ✅ Why It Helps                 |
+| -------------------------------------------- | ------------------------------ |
+| Avoid large docs > 16MB                      | MongoDB max doc size is 16MB   |
+| Use pagination with `.limit()` and `.skip()` | Avoids loading too much data   |
+| Pre-aggregate frequently accessed data       | Caches results, saves CPU      |
+| Monitor replica lag                          | To detect slow secondaries     |
+| Avoid too many indexes                       | Each write updates all indexes |
+| Shard large collections early                | Don't wait until it's too late |
+
+🚨 Red Flags to Watch Out For
+    1. COLLSCAN in explain() output
+    2. WiredTiger cache over 80%
+    3. Replica lag > few seconds
+    4. opcounters.insert/query/update/delete too high
+    5. MongoDB logs showing page faults, write lock, OOM
+
+
+
