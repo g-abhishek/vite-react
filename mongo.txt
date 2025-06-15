@@ -373,5 +373,93 @@ documents most closely matching will have higher text relevance score
   { "title": "Advanced MongoDB features", "score": 2.1 }
 ]
 
+🔐 Part 7: MongoDB Transactions & ACID
+MongoDB started as a flexible NoSQL DB, but now supports multi-document transactions, making it reliable for critical business operations, just like relational databases.
+
+🧠 What Is a Transaction?
+A transaction is a sequence of database operations that are treated as a single unit:
+    1. Either all operations succeed (COMMIT),
+    2. Or none of them do (ROLLBACK).
+
+✅ MongoDB and ACID
+MongoDB now fully supports ACID guarantees in transactions:
+| Term        | Meaning                                          |
+| ----------- | ------------------------------------------------ |
+| Atomicity   | All operations succeed or fail as a whole        |
+| Consistency | Ensures data remains valid after the transaction |
+| Isolation   | Concurrent transactions don’t interfere          |
+| Durability  | Once committed, data stays even after crash      |
+
+
+🔧 Basic Syntax of a Transaction
+const session = db.getMongo().startSession();
+const postsCollection = session.getDatabase("test").posts;
+const authorsCollection = session.getDatabase("test").authors;
+
+session.startTransaction();
+
+try {
+  postsCollection.insertOne({
+    title: "New Post inside TX",
+    author_id: ObjectId("..."),
+    created_at: new Date()
+  });
+
+  authorsCollection.updateOne(
+    { _id: ObjectId("...") },
+    { $set: { bio: "Updated inside transaction" } }
+  );
+
+  session.commitTransaction();
+  print("Transaction committed.");
+} catch (e) {
+  session.abortTransaction();
+  print("Transaction aborted due to error:", e);
+}
+
+❗ WARNING
+If you try to run a transaction on a standalone MongoDB instance, which does not support transactions.
+You will see this error,
+MongoServerError[IllegalOperation]: Transaction numbers are only allowed on a replica set member or mongos
+
+❗ Why This Error Occurs
+Multi-document transactions in MongoDB are only supported on:
+    1. Replica sets
+    2. Sharded clusters (via mongos)
+Standalone servers (e.g., what you get from a default local install or Docker without replica set config) do not support transactions and will throw this error when you try.
+
+✅ How to Fix It
+You need to run MongoDB as a replica set, even if it's a single-node setup (for dev/test purposes).
+
+🔧 Option A: Start MongoDB as a Single-Node Replica Set
+1. Stop your running MongoDB (if any).
+2. Start it with replica set config, for example:
+    mongod --replSet rs0 --port 27017 --dbpath /your/db/path
+3. In a new shell, initiate the replica set:
+    mongosh
+    > rs.initiate()
+You’ll now be running a single-node replica set, suitable for local testing with transactions.
+
+🔁 Want Transactions? Use Replica Set
+
+Transactions need a replica set. Here's how to start a container that supports this:
+Step 1: Run MongoDB with a replica set name
+    docker run -d --name mongo-rs -p 27017:27017 -v ./mongo-rs-data:/data/db mongo:7.0 --replSet rs0
+Step 2: Initiate the Replica Set - Once the container is running, connect using mongosh:
+    docker exec -it mongo-rs mongosh
+Inside the shell:
+    rs.initiate()
+You should see an output like:
+{
+  ok: 1,
+  ...
+}
+Then check status:
+    rs.status()
+You should now see the node in "stateStr": "PRIMARY".
+
+You now have a single-node replica set, perfect for development with transactions.
+
+
 
 
