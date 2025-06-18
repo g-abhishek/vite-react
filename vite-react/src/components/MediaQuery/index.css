@@ -1,0 +1,28 @@
+.mq-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    /* grid-template-columns: repeat(3, 1fr); */ /* 3 columns */
+    grid-gap: 10px;
+}
+
+.mq-card {
+    background-color: #1a1a1a;
+    padding: 40px;
+    border-radius: 8px;
+}
+
+@media (max-width: 1024px) {
+    .mq-container {
+        grid-template-rows: 1fr;
+    }
+    .mq-card {
+        background-color: white;
+    }
+}
+
+@media (max-width: 600px) {
+    .mq-card {
+        background-color: red;
+        /* grid-template-columns: 1fr; */ /* single column → stack */
+    }
+}

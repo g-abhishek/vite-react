@@ -17,6 +17,7 @@ import CustomHook from "./components/CustomHook";
 import DebounceSearch from "./components/DebounceSearch";
 import ErrorBoundaryComponent from "./components/ErrorBoundaryComponent";
 import EventBubling from "./components/EventBubling";
+import MediaQuery from "./components/MediaQuery";
 
 function App() {
   return (
@@ -39,12 +40,14 @@ function App() {
           <Link to={"/debounce-search"}>DebounceSearch</Link>
           <Link to={"/error-boundary"}>ErrorBoundary</Link>
           <Link to={"/event-bubling"}>EventBubling</Link>
+          <Link to={"/media-query"}>MediaQuery</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/media-query" element={<MediaQuery />} />
             <Route path="/event-bubling" element={<EventBubling />} />
             <Route path="/error-boundary" element={<ErrorBoundaryComponent />} />
             <Route path="/debounce-search" element={<DebounceSearch />} />
