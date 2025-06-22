@@ -1,0 +1,15 @@
+.box {
+    height: 200px;
+    padding: 20px;
+    border: 10px solid red;
+    margin: 100px 20px;
+}
+
+.box2 {
+    height: 200px;
+    padding: 20px;
+    border: 10px solid red;
+    margin: 50px 20px;
+
+    box-sizing: border-box;
+}

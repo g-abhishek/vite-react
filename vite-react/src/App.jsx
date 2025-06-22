@@ -18,6 +18,7 @@ import DebounceSearch from "./components/DebounceSearch";
 import ErrorBoundaryComponent from "./components/ErrorBoundaryComponent";
 import EventBubling from "./components/EventBubling";
 import MediaQuery from "./components/MediaQuery";
+import CSSBoxModel from "./components/CSSBoxModel";
 
 function App() {
   return (
@@ -41,12 +42,14 @@ function App() {
           <Link to={"/error-boundary"}>ErrorBoundary</Link>
           <Link to={"/event-bubling"}>EventBubling</Link>
           <Link to={"/media-query"}>MediaQuery</Link>
+          <Link to={"/css-box-model"}>CSSBoxModel</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/css-box-model" element={<CSSBoxModel />} />
             <Route path="/media-query" element={<MediaQuery />} />
             <Route path="/event-bubling" element={<EventBubling />} />
             <Route path="/error-boundary" element={<ErrorBoundaryComponent />} />
