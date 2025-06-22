@@ -19,6 +19,7 @@ import ErrorBoundaryComponent from "./components/ErrorBoundaryComponent";
 import EventBubling from "./components/EventBubling";
 import MediaQuery from "./components/MediaQuery";
 import CSSBoxModel from "./components/CSSBoxModel";
+import SuspenseComponent from "./components/SuspenseComponent";
 
 function App() {
   return (
@@ -43,16 +44,21 @@ function App() {
           <Link to={"/event-bubling"}>EventBubling</Link>
           <Link to={"/media-query"}>MediaQuery</Link>
           <Link to={"/css-box-model"}>CSSBoxModel</Link>
+          <Link to={"/suspense-component"}>SuspenseComponent</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/suspense-component" element={<SuspenseComponent />} />
             <Route path="/css-box-model" element={<CSSBoxModel />} />
             <Route path="/media-query" element={<MediaQuery />} />
             <Route path="/event-bubling" element={<EventBubling />} />
-            <Route path="/error-boundary" element={<ErrorBoundaryComponent />} />
+            <Route
+              path="/error-boundary"
+              element={<ErrorBoundaryComponent />}
+            />
             <Route path="/debounce-search" element={<DebounceSearch />} />
             <Route path="/custom-hook" element={<CustomHook />} />
             <Route path="/hoc" element={<HOC />} />
