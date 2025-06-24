@@ -21,6 +21,7 @@ import MediaQuery from "./components/MediaQuery";
 import CSSBoxModel from "./components/CSSBoxModel";
 import SuspenseComponent from "./components/SuspenseComponent";
 import WebWorker from "./components/WebWorker";
+import Table from "./components/Table";
 
 function App() {
   return (
@@ -47,12 +48,14 @@ function App() {
           <Link to={"/css-box-model"}>CSSBoxModel</Link>
           <Link to={"/suspense-component"}>SuspenseComponent</Link>
           <Link to={"/web-worker"}>WebWorker</Link>
+          <Link to={"/table"}>Table</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/table" element={<Table />} />
             <Route path="/web-worker" element={<WebWorker />} />
             <Route path="/suspense-component" element={<SuspenseComponent />} />
             <Route path="/css-box-model" element={<CSSBoxModel />} />

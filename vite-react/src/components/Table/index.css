@@ -1,0 +1,17 @@
+table {
+    border-radius: 8px;
+    background-color: #111111;
+}
+
+thead {
+    background-color: black;
+}
+
+td, th {
+    padding: 12px 16px;
+    min-height: 24px;
+    height: 52px;
+    box-sizing: border-box;
+
+    text-align: start;
+}
