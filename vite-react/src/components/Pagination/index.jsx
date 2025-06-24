@@ -32,32 +32,35 @@ const getPagination = ({ selectedPage, totalPages }) => {
   return arr;
 };
 
-const Pagination = () => {
-  const [totalItems] = useState(95);
+const Pagination = ({ total_items = 95, page_size = 10, onPageChange }) => {
+  const [totalItems] = useState(total_items);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize] = useState(page_size);
 
   useEffect(() => {
     setTotalPages(() => Math.ceil(totalItems / pageSize));
   }, [totalItems, currentPage, pageSize]);
 
   // action = next, previous. number
-  const onPageChange = ({ action, pageNumber = 1 }) => {
+  const handleButtonClick = ({ action, pageNumber = 1 }) => {
     if (action === "next") {
       setCurrentPage(() => currentPage + 1);
+      onPageChange(currentPage + 1);
     } else if (action === "previous") {
       setCurrentPage(() => currentPage - 1);
+      onPageChange(currentPage - 1);
     } else {
       setCurrentPage(() => pageNumber);
+      onPageChange(pageNumber);
     }
   };
 
   return (
     <>
       <div className="container">
-        <h2>Current Page: {currentPage}</h2>
-        <h2>Page Size: {pageSize}</h2>
+        {/* <h2>Current Page: {currentPage}</h2>
+        <h2>Page Size: {pageSize}</h2> */}
 
         <div className="pagination-footer">
           <div>
@@ -68,7 +71,7 @@ const Pagination = () => {
           <div className="pagination-actions">
             <button
               disabled={currentPage <= 1}
-              onClick={() => onPageChange({ action: "previous" })}
+              onClick={() => handleButtonClick({ action: "previous" })}
             >
               Previous
             </button>
@@ -79,7 +82,9 @@ const Pagination = () => {
                   key={i}
                   className={currentPage === p ? "active" : ""}
                   onClick={() =>
-                    typeof p === "number" ? onPageChange({ pageNumber: p }) : {}
+                    typeof p === "number"
+                      ? handleButtonClick({ pageNumber: p })
+                      : {}
                   }
                 >
                   {p}
@@ -89,7 +94,7 @@ const Pagination = () => {
 
             <button
               disabled={currentPage >= Math.ceil(totalItems / pageSize)}
-              onClick={() => onPageChange({ action: "next" })}
+              onClick={() => handleButtonClick({ action: "next" })}
             >
               Next
             </button>

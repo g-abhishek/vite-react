@@ -3,7 +3,7 @@ table {
     background-color: #111111;
 }
 
-thead {
+thead, tfoot {
     background-color: black;
 }
 
