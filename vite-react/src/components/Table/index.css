@@ -1,6 +1,10 @@
 table {
     border-radius: 8px;
     background-color: #111111;
+
+    /* By default, browsers add spacing between table cells, which creates "empty dividers" or gaps */
+    /* This removes the default spacing between cells so borders touch each other cleanly. */
+    border-collapse: collapse; 
 }
 
 thead, tfoot {
@@ -14,4 +18,9 @@ td, th {
     box-sizing: border-box;
 
     text-align: start;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+tfoot tr:last-child td {
+    border: none;
 }
