@@ -24,3 +24,10 @@ td, th {
 tfoot tr:last-child td {
     border: none;
 }
+
+tbody tr:nth-child(even) {
+    background-color: #111111;
+}
+tbody tr:nth-child(even) {
+    background-color: #18191a;
+}
