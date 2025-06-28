@@ -10,14 +10,24 @@
 
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script>
-      const socket = io("http://localhost:3000");
+        const socket = io("http://localhost:3000");
 
-      // pre-reserved events, client to listen on "message" event
-      socket.on("message", (msg) => {
-        console.log("Welcome message:", msg);
-      });
+        // pre-reserved events, client to listen on "message" event
+        socket.on("message", (msg) => {
+          console.log("Welcome message:", msg);
+        });
 
       socket.on("announcement", (data) => console.log(data));
+
+      const chatSocket = io("http://localhost:3000/chat");
+      chatSocket.on("message", (msg) => {
+        console.log("Chat message:", msg);
+      });
+
+      const adminSocket = io("http://localhost:3000/admin");
+      adminSocket.on("message", (msg) => {
+        console.log("Admin message:", msg);
+      });
     </script>
   </body>
 </html>

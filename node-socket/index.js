@@ -14,6 +14,23 @@ httpServer.listen(3000, () => {
 // Socket.io Connection
 let users = 0;
 
+// Namespaces allow you to create multiple, independent communication channels on the same Socket.IO server — all over the same underlying connection.
+// Think of them as virtual endpoints that separate different parts of your real-time logic.
+const chatNamespace = io.of("/chat");
+const adminNamespace = io.of("/admin");
+chatNamespace.on("connection", (socket) => {
+  console.log("User connected to CHAT namespace");
+
+  socket.send("Welcome to the chat room!");
+});
+
+adminNamespace.on("connection", (socket) => {
+  console.log("Admin connected");
+
+  socket.send("Admin area access granted");
+});
+
+// This operates on the default namespace, which is simply /.
 io.on("connection", (socket) => {
   console.log("A user connected");
   users++;
