@@ -7,15 +7,18 @@
   </head>
   <body>
     <h1>Socket.IO Chat</h1>
+    <input id="msgInput" placeholder="Type your message" />
+    <button onclick="sendMessage()">Send Message</button>
+    <button onclick="connectAdmin()">Connect To Admin</button>
 
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script>
-        const socket = io("http://localhost:3000");
+      const socket = io("http://localhost:3000");
 
-        // pre-reserved events, client to listen on "message" event
-        socket.on("message", (msg) => {
-          console.log("Welcome message:", msg);
-        });
+      // pre-reserved events, client to listen on "message" event
+      socket.on("message", (msg) => {
+        console.log("Welcome message:", msg);
+      });
 
       socket.on("announcement", (data) => console.log(data));
 
@@ -24,10 +27,36 @@
         console.log("Chat message:", msg);
       });
 
-      const adminSocket = io("http://localhost:3000/admin");
-      adminSocket.on("message", (msg) => {
-        console.log("Admin message:", msg);
-      });
+      // Rooms ------
+      socket.emit("joinRoom", "room-1");
+
+      socket.on("room-message", (message) => console.log(message));
+
+      function sendMessage() {
+        const message = document.getElementById("msgInput").value;
+        socket.emit("sendMessage", { room: "room-1", message: message });
+      }
+
+      function connectAdmin() {
+        // Namespace with auth ---------------
+        const adminSocket = io("http://localhost:3000/admin", {
+          auth: {
+            token: "wrong-token",
+          },
+        });
+        adminSocket.on("connect", () => {
+          console.log("Admin socket connected");
+        });
+        adminSocket.on("connect_error", (err) => {
+          console.error("Connection failed:", err.message);
+        });
+        adminSocket.on("message", (msg) => {
+          console.log("Admin message:", msg);
+        });
+        // Namespace with auth ---------------
+      }
+
+      // Rooms --------------
     </script>
   </body>
 </html>

@@ -24,6 +24,15 @@ chatNamespace.on("connection", (socket) => {
   socket.send("Welcome to the chat room!");
 });
 
+// middleware in socket
+adminNamespace.use((socket, next) => {
+  const token = socket?.handshake?.auth?.token;
+  if (token !== "token1234") {
+    return next(new Error("Unauthorized: Invalid Token"));
+  }
+  
+  next();
+});
 adminNamespace.on("connection", (socket) => {
   console.log("Admin connected");
 
@@ -45,8 +54,42 @@ io.on("connection", (socket) => {
     `New user connected. Total count is ${users}`
   );
 
+  // Rooms -----
+  // This listens for an event named "joinRoom" sent from the client
+  socket.on("joinRoom", (roomName) => {
+    // Internlly, Socket.IO maintains a map of rooms and socket IDs
+    socket.join(roomName);
+    console.log(`${socket.id} joined room ${roomName}`);
+
+    socket
+      .to(roomName)
+      .emit("room-message", `User ${socket.id} joined ${roomName}`); // NOTE: If we used io.to(roomName).emit(...), even the sender would receive it.
+
+    socket.on("sendMessage", (payload) => {
+      socket
+        .to(payload.room)
+        .emit("room-message", `${socket.id}: ${payload.message}`);
+    });
+  });
+
+  // Rooms --------------
+
   socket.on("disconnect", () => {
     users--;
     console.log("User disconnected");
   });
 });
+
+/**
+ * 
+ * 
+| Method               | Purpose                                |
+| -------------------- | -------------------------------------- |
+| `socket.on()`        | Listen for an event from client        |
+| `socket.join()`      | Add socket to a specific room          |
+| `socket.to().emit()` | Send message to room, excluding sender |
+| `io.to().emit()`     | Send message to room, including sender |
+
+ * 
+ * 
+ */
