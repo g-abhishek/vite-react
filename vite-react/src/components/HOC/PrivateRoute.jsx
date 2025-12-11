@@ -2,6 +2,7 @@ import { Navigate } from "react-router-dom";
 
 const PrivateRoute = ({ component: Component, redirectTo }) => {
   const user = localStorage.getItem("user");
+  console.log("user >>>>>", user);
 
   if (!user) {
     console.log("object  ");

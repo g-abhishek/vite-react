@@ -11,7 +11,7 @@ const UseMemo = () => {
   const [count, setCount] = useState(0);
 
   // 🔁 Without useMemo: This runs on EVERY render
-  //   const double = slowFunction(number);
+    // const double = slowFunction(number);
 
   // ✅ With useMemo: Only runs when dependency 'number' changes
   const double = useMemo(() => slowFunction(number), [number]);
@@ -76,4 +76,40 @@ export default UseMemo;
  * ✅ When to Use:
  *   1. Expensive computations in render
  *   2. You want to avoid recalculating unless dependencies change
+ */
+
+/**
+ * IMPORTANT POINTS:
+ * You can wrap slowFunction in useCallback, but it will NOT solve the problem you're trying to fix.
+ * Because:
+  * 👉 useCallback memoizes the function reference
+  * 👉 useMemo memoizes the function result
+ * 
+ * Your expensive function is slow because of execution, not because of its identity.
+ * So wrapping slowFunction with useCallback does NOT prevent it from running.
+ * But useMemo does.
+ * 
+ * 🔍 Why useCallback won’t help here
+ * If you do: const slowFn = useCallback(() => slowFunction(number), [number]);
+ * It still means:
+  * The function is called on every render when used.
+  * The heavy loop (for (let i = 0; i < 1e9; i++)) still runs.
+  * Only the function reference is stable — not the result.
+ * 
+ * 
+ * 🧠 Why useMemo is the correct tool
+ * useMemo ensures the result of the computation is cached:
+ * const double = useMemo(() => slowFunction(number), [number]);
+ * Now:
+  * It only runs when number changes
+  * Pressing Re-render will NOT re-run the heavy function
+  * UI remains fast & responsive
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
  */

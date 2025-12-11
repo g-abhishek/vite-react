@@ -19,6 +19,11 @@ const LazyImage = ({ src = "", alt = "" }) => {
     );
 
     observer.observe(imgRef.current);
+
+    // ✅ CLEANUP: Disconnect observer when component unmounts
+    return () => {
+      observer.disconnect();
+    };
   }, []);
 
   return (

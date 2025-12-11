@@ -32,7 +32,7 @@ const getPagination = ({ selectedPage, totalPages }) => {
   return arr;
 };
 
-const Pagination = ({ total_items = 95, page_size = 10, onPageChange }) => {
+const Pagination = ({ total_items = 95, page_size = 10, onPageChange = () =>{} }) => {
   const [totalItems] = useState(total_items);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);

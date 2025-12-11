@@ -46,7 +46,7 @@ export default UseReducerComponent;
  * dispatch: Function you call to trigger state updates
  * initialState: Your default state object
  * 
- * 🧰 When to Use useReduce
+ * 🧰 When to Use useReducer
  * Use it when:
  * You manage multiple related state variables.
  * The next state depends on the previous state.

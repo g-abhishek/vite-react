@@ -41,3 +41,11 @@ export default UseCallback;
  * This is useful when we're passing functions to child components that are memoized using React.memo.
  * If we don’t use useCallback, even identical functions get new references each time, which causes unnecessary re-renders.
  */
+
+
+/**
+ * IMPORTANT POINTS:
+  * useCallback - to memoize functions reference
+  * memo - to memoize components
+  * useMemo - memoizes the function result/value
+ */
