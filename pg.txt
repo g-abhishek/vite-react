@@ -2,6 +2,7 @@
 \c - Select DATABASE
 \d - describe TABLE
 \q - exit
+\dt - list tables
 
 CREATE DATABASE employee_db;
 

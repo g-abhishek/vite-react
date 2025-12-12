@@ -1,6 +1,8 @@
 ✅ What is MongoDB?
 MongoDB is a NoSQL document-based database. 
 It stores data in flexible, JSON-like documents (BSON) instead of rows and tables like in relational databases.
+BSON stands for Binary JSON
+While it’s similar to JSON in structure, BSON is designed for efficiency, speed, and extensibility, making it suitable for storing and querying complex data.
 
 // list databases
 show dbs
