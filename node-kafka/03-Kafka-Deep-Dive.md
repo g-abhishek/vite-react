@@ -1450,3 +1450,5 @@ const lowLatencyConsumer = kafka.consumer({
 
 Master these concepts and you'll ace any Kafka interview! 🎯
 
+
+
