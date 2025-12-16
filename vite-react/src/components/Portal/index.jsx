@@ -9,6 +9,10 @@ function index() {
 export default index;
 
 /**
+ * The #modal-root lets us render the modal above everything else using React Portals, so it’s not “trapped” inside the DOM structure of some component.
+ */
+
+/**
  * ReactDom.createPortal lets you render a React Component outside its parent(root) DOM hierarchy, while still keeping it in the same React tree.
  * This is extremely useful for modals, dropdowns, tooltips, sidebars, or anything that must visually “escape” overflow/positioning constraints of the parent.
  * 

@@ -51,8 +51,8 @@ function App() {
           <Link to={"/suspense-component"}>SuspenseComponent</Link>
           <Link to={"/web-worker"}>WebWorker</Link>
           <Link to={"/table"}>Table</Link>
-          <Link to={"/modal"}>Modal</Link>
           <Link to={"/portal"}>React Portal</Link>
+          <Link to={"/modal"}>Modal</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
