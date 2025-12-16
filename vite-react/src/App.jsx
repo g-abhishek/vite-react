@@ -22,6 +22,8 @@ import CSSBoxModel from "./components/CSSBoxModel";
 import SuspenseComponent from "./components/SuspenseComponent";
 import WebWorker from "./components/WebWorker";
 import Table from "./components/Table";
+import ReactPortal from "./components/Portal";
+import ModalComponent from "./components/ModalComponent";
 
 function App() {
   return (
@@ -49,12 +51,16 @@ function App() {
           <Link to={"/suspense-component"}>SuspenseComponent</Link>
           <Link to={"/web-worker"}>WebWorker</Link>
           <Link to={"/table"}>Table</Link>
+          <Link to={"/modal"}>Modal</Link>
+          <Link to={"/portal"}>React Portal</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/modal" element={<ModalComponent />} />
+            <Route path="/portal" element={<ReactPortal />} />
             <Route path="/table" element={<Table />} />
             <Route path="/web-worker" element={<WebWorker />} />
             <Route path="/suspense-component" element={<SuspenseComponent />} />

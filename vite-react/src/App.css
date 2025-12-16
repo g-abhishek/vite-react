@@ -6,6 +6,11 @@
   
 }
 
+#modal-root {
+  position: fixed;
+  inset: 0;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;
