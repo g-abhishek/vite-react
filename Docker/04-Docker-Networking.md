@@ -342,3 +342,4 @@ docker run -d --name app --link db:database myapp
 10. **DNS** only works automatically on user-defined networks, not default bridge
 
 
+

@@ -373,3 +373,4 @@ docker inspect container_name | jq '.[0].HostConfig.SecurityOpt'
 12. **Rootless Docker** runs daemon without root privileges
 
 
+
