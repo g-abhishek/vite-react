@@ -59,6 +59,7 @@ function App() {
         </div>
         <div className="main-content">
           <Routes>
+            <Route path="/closure-interval" element={<ClosureInterval />} />
             <Route path="/modal" element={<ModalComponent />} />
             <Route path="/portal" element={<ReactPortal />} />
             <Route path="/table" element={<Table />} />
@@ -78,7 +79,6 @@ function App() {
             <Route path="/context-api" element={<ContextAPI />} />
             <Route path="/use-reducer" element={<UseReducerComponent />} />
             <Route path="/lazy-loading-image" element={<LazyloadingImage />} />
-            <Route path="/closure-interval" element={<ClosureInterval />} />
             <Route path="/infinite-scroll" element={<InfiniteScroll />} />
             <Route path="/pagination" element={<Pagination />} />
             <Route path="/use-layout-effect" element={<UseLayoutEffect />} />

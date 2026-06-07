@@ -18,6 +18,10 @@ const Button = memo(({ onClick }) => {
 const UseCallback = () => {
   const [count, setCount] = useState(0);
 
+  // const handleChildButtonClick = () => {
+  //   console.log("Button clicked");
+  // };
+
   const handleChildButtonClick = useCallback(() => {
     console.log("Button clicked");
   }, []); // pass [count] to check the re-rendering of both parent and child, as this will create new instance on every click, bcoz dependencies are getting changed on every click
