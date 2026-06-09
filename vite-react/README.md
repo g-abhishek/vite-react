@@ -1,4 +1,11 @@
-# React + Vite
+# React + Vite — Interview Practice
+
+Hands-on examples for React interview topics (hooks, context, HOC, Suspense, error boundaries, infinite scroll, etc.). See components under `src/components/`.
+
+**Study guide (basics → senior):** [`../javascript/09-React-Interview-Complete-Guide.md`](../javascript/09-React-Interview-Complete-Guide.md)  
+**React internals deep dive:** [`../javascript/04-React-Internals.md`](../javascript/04-React-Internals.md)
+
+---
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
