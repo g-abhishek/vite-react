@@ -1,339 +1,595 @@
-# Docker Volumes & Storage - Revision Guide
+# Docker Volumes & Storage — Complete Guide (Basics to Advanced)
 
-## Why Volumes?
-
-Containers are **ephemeral** - data inside a container is lost when the container is removed. Volumes provide **persistent storage**.
+> Containers forget everything when they die — volumes are how you keep databases, uploads, and config safe. Every storage type and command explained with real scenarios.
 
 ---
 
-## Storage Types
+## Table of Contents
 
-### 1. Volumes (Recommended)
+1. [What is Docker Storage? — The Real Explanation](#1-what-is-docker-storage--the-real-explanation)
+2. [Why Volumes Matter — The Problems They Solve](#2-why-volumes-matter--the-problems-they-solve)
+3. [Core Concepts & Mental Models](#3-core-concepts--mental-models)
+4. [Three Storage Types Compared](#4-three-storage-types-compared)
+5. [Volume Commands — Every Command Explained](#5-volume-commands--every-command-explained)
+6. [Syntax: `-v` vs `--mount`](#6-syntax--v-vs---mount)
+7. [Patterns for Real Applications](#7-patterns-for-real-applications)
+8. [Backup, Restore & Migration](#8-backup-restore--migration)
+9. [Permissions & Ownership](#9-permissions--ownership)
+10. [Advanced Patterns](#10-advanced-patterns)
+11. [When to Use What — Decision Guide](#11-when-to-use-what--decision-guide)
+12. [Common Pitfalls & How to Avoid Them](#12-common-pitfalls--how-to-avoid-them)
+13. [Summary Cheatsheet](#summary-cheatsheet)
 
-Managed by Docker, stored in `/var/lib/docker/volumes/`.
+---
+
+## 1. What is Docker Storage? — The Real Explanation
+
+A running container has a **writable layer** on top of read-only image layers. That writable layer is **ephemeral** — when the container is removed, it's gone.
+
+**Volumes and mounts** connect container paths to storage that **outlives** the container.
+
+### Analogy: hotel room vs storage unit
+
+- **Container writable layer** = hotel room — leave, your stuff is cleared
+- **Named volume** = storage unit — your boxes stay when you check out
+- **Bind mount** = working from your own desk in the hotel room — host folder visible inside
+
+```
+Image layers (read-only)
+┌─────────────────────────┐
+│  Writable layer (gone   │  ← logs, temp files, db without volume
+│  when container rm)   │
+├─────────────────────────┤
+│  Volume mount         │  ← /var/lib/postgresql/data → pgdata volume
+│  (persists)           │
+└─────────────────────────┘
+```
+
+---
+
+## 2. Why Volumes Matter — The Problems They Solve
+
+### Problem 1: Database wiped after `docker rm`
+
+You ran Postgres, added users, removed container to "clean up" — all data gone.
+
+**Fix:** Named volume on `/var/lib/postgresql/data`.
+
+### Problem 2: Can't edit code without rebuilding image
+
+Rebuild image on every `console.log` change — 2-minute feedback loop.
+
+**Fix:** Bind mount source code in dev: `-v $(pwd):/app`.
+
+### Problem 3: `node_modules` broken on bind mount
+
+Host Mac mounts over container Linux — native modules wrong architecture.
+
+**Fix:** Anonymous volume on `/app/node_modules` preserves container install.
+
+### Problem 4: No backup strategy
+
+Container died; no volume — no backup possible.
+
+**Fix:** Named volumes + `tar` backup pattern (section 8).
+
+### Problem 5: Sensitive temp data on disk
+
+Session tokens written to disk persist after container stop.
+
+**Fix:** `tmpfs` mount — lives in RAM only.
+
+---
+
+## 3. Core Concepts & Mental Models
+
+| Term | Meaning |
+|------|---------|
+| **Named volume** | Docker-managed storage with a label (`pgdata`) |
+| **Anonymous volume** | Volume with random ID, no friendly name |
+| **Bind mount** | Host path mapped into container |
+| **tmpfs** | RAM-backed filesystem |
+| **Mount point** | Path inside container (`/data`) |
+| **Volume driver** | Plugin for remote storage (NFS, cloud) |
+
+### Data lifecycle
+
+```
+docker run -v pgdata:/var/lib/postgresql/data db
+    │
+    ▼
+Container runs, writes to /var/lib/postgresql/data
+    │
+    ▼
+docker rm db          →  container gone, pgdata volume REMAINS
+    │
+    ▼
+docker run -v pgdata:... db   →  same data back
+```
+
+---
+
+## 4. Three Storage Types Compared
+
+| Feature | Named volume | Bind mount | tmpfs |
+|---------|--------------|------------|-------|
+| **Managed by** | Docker | You (host path) | Docker (RAM) |
+| **Location** | `/var/lib/docker/volumes/` | Any host path | Memory |
+| **Survives container rm** | Yes | Yes (host files) | No |
+| **Portable across hosts** | High | Low | N/A |
+| **Dev hot reload** | Poor | Excellent | N/A |
+| **Production DB** | ✓ Best | Avoid | N/A |
+| **Performance** | Good | Depends on disk | Fastest |
+
+### When to pick each
+
+```
+Production database     → named volume
+Dev source code edit    → bind mount
+Secrets / sessions RAM  → tmpfs
+Sharing between containers → named volume (same name)
+```
+
+---
+
+## 5. Volume Commands — Every Command Explained
+
+---
+
+### `docker volume create`
+
+**What:** Create empty named volume.
 
 ```bash
-# Create volume
-docker volume create my-data
+docker volume create pgdata
+```
 
-# Run with named volume
-docker run -d -v my-data:/app/data nginx
+**Scenario:** Pre-create volume before first `docker run` with specific driver options.
 
-# Inspect volume
-docker volume inspect my-data
+**How it helps:** Explicit naming — easier backup scripts and documentation.
 
-# List volumes
+---
+
+### `docker volume ls`
+
+```bash
 docker volume ls
+```
 
-# Remove volume
-docker volume rm my-data
+```
+DRIVER    VOLUME NAME
+local     myapp_pgdata
+local     3f8a9c2b4d1e7f6a...    ← anonymous
+```
 
-# Remove unused volumes
+**Scenario:** Disk full — find orphaned volumes from old projects.
+
+---
+
+### `docker volume inspect`
+
+```bash
+docker volume inspect pgdata
+```
+
+```json
+{
+  "Mountpoint": "/var/lib/docker/volumes/pgdata/_data",
+  "Driver": "local"
+}
+```
+
+**How it helps:** Find actual host path (Linux) for manual inspection — path differs on Docker Desktop Mac/Win (VM internal).
+
+---
+
+### `docker volume rm`
+
+```bash
+docker volume rm pgdata
+```
+
+**Fails if:** Volume attached to running container.
+
+**Scenario:** Intentionally wipe dev database — `rm` volume after `docker compose down` (without `-v` first stopping containers).
+
+---
+
+### `docker volume prune`
+
+```bash
 docker volume prune
+# WARNING: removes ALL unused volumes
 ```
 
-### 2. Bind Mounts
+**Scenario:** Cleanup after months of local dev.
 
-Mount a specific host directory into container.
-
-```bash
-# Bind mount current directory
-docker run -d -v $(pwd):/app nginx
-
-# Bind mount with absolute path
-docker run -d -v /host/path:/container/path nginx
-
-# Read-only mount
-docker run -d -v /host/path:/container/path:ro nginx
-```
-
-### 3. tmpfs Mounts (Linux only)
-
-Stored in host memory, never written to disk.
-
-```bash
-docker run -d --tmpfs /app/temp nginx
-
-# Or with more options
-docker run -d --mount type=tmpfs,destination=/app/temp,tmpfs-size=100m nginx
-```
+**Danger:** Unused production backup volume not attached to any container — **deleted**.
 
 ---
 
-## Comparison
-
-| Feature | Volumes | Bind Mounts | tmpfs |
-|---------|---------|-------------|-------|
-| **Location** | Docker managed | Host filesystem | Memory |
-| **Persistence** | Yes | Yes | No (container stop) |
-| **Portability** | High | Low (host-dependent) | N/A |
-| **Performance** | Good | Varies | Fastest |
-| **Backup** | Docker CLI | Standard tools | N/A |
-| **Use Case** | Production data | Development | Sensitive/temp data |
-
----
-
-## Volume Syntax Options
-
-### Short Syntax (-v)
+### Run with volume — `docker run -v`
 
 ```bash
 # Named volume
-docker run -v volume-name:/container/path image
+docker run -d --name db \
+  -v pgdata:/var/lib/postgresql/data \
+  -e POSTGRES_PASSWORD=secret \
+  postgres:15-alpine
 
 # Bind mount
-docker run -v /host/path:/container/path image
+docker run -d \
+  -v "$(pwd)":/app \
+  -w /app \
+  node:18-alpine npm run dev
 
-# Anonymous volume
-docker run -v /container/path image
+# Read-only bind mount
+docker run -d \
+  -v "$(pwd)/config":/etc/app/config:ro \
+  my-api
+
+# Anonymous volume (only container path)
+docker run -d -v /app/node_modules my-api
 ```
 
-### Long Syntax (--mount) - More Explicit
+---
+
+## 6. Syntax: `-v` vs `--mount`
+
+### Short syntax (`-v`)
 
 ```bash
-# Named volume
-docker run --mount type=volume,source=my-vol,target=/app/data image
-
-# Bind mount
-docker run --mount type=bind,source=/host/path,target=/container/path image
-
-# Read-only
-docker run --mount type=bind,source=/host/path,target=/container/path,readonly image
-
-# tmpfs
-docker run --mount type=tmpfs,target=/app/temp image
+docker run -v pgdata:/var/lib/postgresql/data myimage
+docker run -v /host/path:/container/path myimage
+docker run -v /container/path-only myimage   # anonymous volume
 ```
 
-**Differences:**
-- `--mount`: Fails if source doesn't exist (safer)
-- `-v`: Creates source directory if it doesn't exist
-
----
-
-## Volume Drivers
-
-Volumes can use different storage backends.
+### Long syntax (`--mount`) — explicit, safer
 
 ```bash
-# Local driver (default)
-docker volume create --driver local my-volume
+docker run --mount type=volume,source=pgdata,target=/var/lib/postgresql/data myimage
 
-# NFS driver example
-docker volume create --driver local \
-  --opt type=nfs \
-  --opt o=addr=192.168.1.100,rw \
-  --opt device=:/path/to/share \
-  nfs-volume
+docker run --mount type=bind,source=/host/path,target=/container/path,readonly myimage
 
-# Cloud storage (plugins)
-docker volume create --driver rexray/ebs ebs-volume
+docker run --mount type=tmpfs,target=/app/temp,tmpfs-size=100m myimage
 ```
+
+### Key difference
+
+| Behavior | `-v` | `--mount` |
+|----------|------|-----------|
+| Bind mount source missing | Creates directory on host | **Fails** (safer) |
+| Read-only | `:ro` suffix | `readonly` option |
+| Clarity | Shorter | More explicit |
+
+**Recommendation:** Learn `-v` for daily use; use `--mount` in production scripts where fail-fast matters.
 
 ---
 
-## Volume in Docker Compose
+## 7. Patterns for Real Applications
 
-```yaml
-version: "3.8"
-
-services:
-  db:
-    image: postgres:15
-    volumes:
-      # Named volume
-      - postgres-data:/var/lib/postgresql/data
-      # Bind mount
-      - ./init-scripts:/docker-entrypoint-initdb.d:ro
-      
-  app:
-    build: .
-    volumes:
-      # Bind mount for development
-      - .:/app
-      # Anonymous volume to preserve node_modules
-      - /app/node_modules
-
-volumes:
-  postgres-data:  # Named volume declaration
-  
-  # Volume with options
-  custom-volume:
-    driver: local
-    driver_opts:
-      type: none
-      device: /path/on/host
-      o: bind
-```
-
----
-
-## Common Patterns
-
-### Database Persistence
+### Pattern 1: Database persistence
 
 ```bash
 # PostgreSQL
-docker run -d \
-  -v postgres-data:/var/lib/postgresql/data \
+docker run -d --name db \
+  -v pgdata:/var/lib/postgresql/data \
   -e POSTGRES_PASSWORD=secret \
-  postgres
+  postgres:15-alpine
 
 # MySQL
-docker run -d \
-  -v mysql-data:/var/lib/mysql \
-  -e MYSQL_ROOT_PASSWORD=secret \
-  mysql
+docker run -d -v mysqldata:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=secret mysql:8
 
 # MongoDB
-docker run -d \
-  -v mongo-data:/data/db \
-  mongo
+docker run -d -v mongodata:/data/db mongo:6
 ```
 
-### Development Hot Reload
+**Compose equivalent:**
+
+```yaml
+services:
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
+```
+
+---
+
+### Pattern 2: Dev hot reload + node_modules fix
 
 ```yaml
 services:
   app:
     build: .
     volumes:
-      - .:/app                  # Mount source code
-      - /app/node_modules       # Preserve container's node_modules
+      - .:/app
+      - /app/node_modules
     command: npm run dev
 ```
 
-**Why exclude node_modules?**
-- Host's node_modules may have different binaries (OS-specific)
-- Prevents host from overwriting container's dependencies
+**Walkthrough:**
 
-### Sharing Data Between Containers
+```
+1. Bind mount . → /app     (your edits appear instantly)
+2. Anonymous vol /app/node_modules  (container's npm install preserved)
+3. Host's node_modules (if any) does NOT overwrite container's
+```
+
+---
+
+### Pattern 3: Share data between containers
 
 ```yaml
 services:
-  producer:
+  writer:
     image: myproducer
     volumes:
-      - shared-data:/data
-      
-  consumer:
+      - shared:/data
+
+  reader:
     image: myconsumer
     volumes:
-      - shared-data:/data:ro  # Read-only
-      
+      - shared:/data:ro
+
 volumes:
-  shared-data:
+  shared:
 ```
 
-### Backup and Restore
-
-```bash
-# Backup volume to tar file
-docker run --rm \
-  -v my-volume:/source:ro \
-  -v $(pwd):/backup \
-  alpine tar -czf /backup/backup.tar.gz -C /source .
-
-# Restore from tar file
-docker run --rm \
-  -v my-volume:/target \
-  -v $(pwd):/backup:ro \
-  alpine tar -xzf /backup/backup.tar.gz -C /target
-```
-
-### Copy Data from Container
-
-```bash
-# Create container (don't run)
-docker create --name temp myimage
-
-# Copy file/directory out
-docker cp temp:/app/data ./local-data
-
-# Remove temp container
-docker rm temp
-```
+**How it helps:** Export files, shared cache, ETL handoff — one volume, two containers.
 
 ---
 
-## Volume Permissions
+### Pattern 4: Init scripts for database
 
-### Common Permission Issues
+```yaml
+services:
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+```
+
+**Scenario:** SQL files in `./init-scripts/` run **only on first empty data directory**.
+
+---
+
+### Pattern 5: Config without rebuilding image
+
+```bash
+docker run -d \
+  -v "$(pwd)/nginx.conf":/etc/nginx/nginx.conf:ro \
+  nginx:alpine
+```
+
+Change config on host → `docker restart nginx` — no rebuild.
+
+---
+
+## 8. Backup, Restore & Migration
+
+### Backup volume to tar
+
+```bash
+docker run --rm \
+  -v pgdata:/source:ro \
+  -v "$(pwd)":/backup \
+  alpine tar -czf /backup/pgdata-backup.tar.gz -C /source .
+```
+
+**Walkthrough:**
+
+```
+1. --rm          ephemeral helper container
+2. pgdata:/source:ro   mount volume read-only
+3. $(pwd):/backup      host directory for output file
+4. tar -czf ...        compress volume contents
+```
+
+### Restore from tar
+
+```bash
+docker volume create pgdata-restored
+
+docker run --rm \
+  -v pgdata-restored:/target \
+  -v "$(pwd)":/backup:ro \
+  alpine tar -xzf /backup/pgdata-backup.tar.gz -C /target
+```
+
+### Copy from running container
+
+```bash
+docker cp db:/var/lib/postgresql/data ./local-backup
+```
+
+**When:** Quick one-off without volume mount setup.
+
+---
+
+## 9. Permissions & Ownership
+
+### The problem
 
 ```dockerfile
-# Container runs as non-root user
-FROM node:18-alpine
-RUN adduser -D appuser
 USER appuser
-WORKDIR /app
-
-# If volume is mounted, appuser may not have write permission!
 ```
+
+Bind mount `./data:/app/data` — host files owned by `root` or your UID 501. Container `appuser` (UID 1000) can't write.
 
 ### Solutions
 
-```bash
-# 1. Set correct ownership in Dockerfile
-RUN chown -R appuser:appuser /app
+**1. chown in Dockerfile (named volumes)**
 
-# 2. Match UID/GID with host
-docker run -u $(id -u):$(id -g) -v $(pwd):/app myimage
-
-# 3. Use named volumes (Docker manages permissions)
-docker run -v my-data:/app/data myimage
+```dockerfile
+RUN chown -R appuser:appgroup /app/data
+USER appuser
 ```
+
+Docker initializes named volume with correct ownership on first mount.
+
+**2. Match UID at run time (bind mounts)**
+
+```bash
+docker run -u "$(id -u):$(id -g)" -v "$(pwd)":/app myimage
+```
+
+**3. Prefer named volumes for production data**
+
+Docker manages permissions; fewer UID mismatch issues.
 
 ---
 
-## Anonymous Volumes
+## 10. Advanced Patterns
 
-Created without a name, harder to manage.
+### Volume drivers (NFS example)
+
+```bash
+docker volume create --driver local \
+  --opt type=nfs \
+  --opt o=addr=192.168.1.100,rw \
+  --opt device=:/export/docker/volumes \
+  nfs-pgdata
+```
+
+**When:** Multiple Docker hosts need shared storage (careful with databases — usually one writer).
+
+### `docker cp` vs volumes
+
+| | `docker cp` | volumes |
+|---|-------------|---------|
+| Use | One-off extract | Ongoing persistence |
+| Automation | Manual | Compose / orchestration |
+
+### Anonymous volumes from Dockerfile
 
 ```dockerfile
-# In Dockerfile
 VOLUME /app/data
 ```
 
-```bash
-# Creates anonymous volume
-docker run -v /app/data myimage
-```
+Creates anonymous volume if user doesn't specify `-v`. Hard to manage — prefer explicit named volumes in Compose.
 
-**Cleanup:**
-```bash
-# Remove container and its anonymous volumes
-docker rm -v container_name
+### Remove container + anonymous volumes
 
-# Remove all unused volumes
-docker volume prune
+```bash
+docker rm -v container_name    # -v removes anonymous volumes attached
 ```
 
 ---
 
-## Interview Quick Facts
+## 11. When to Use What — Decision Guide
 
-1. **Volumes** are the preferred mechanism for persisting data
+```
+What are you storing?
+ │
+ ├─ Database files → named volume
+ │
+ ├─ Source code (dev) → bind mount
+ │
+ ├─ User uploads (prod) → named volume or cloud storage (S3)
+ │
+ ├─ Config files → bind mount :ro or configs/secrets
+ │
+ ├─ Temp sessions → tmpfs
+ │
+ └─ Share between 2+ containers → named volume
+```
 
-2. **Bind mounts** depend on host directory structure, less portable
+| Environment | Storage choice |
+|-------------|----------------|
+| Local dev app code | bind mount |
+| Local dev database | named volume |
+| CI test database | anonymous or tmp — ephemeral OK |
+| Production database | named volume + backup |
+| Production secrets | secrets manager, not volume in git |
 
-3. **-v** creates directory if missing, **--mount** fails (safer)
+---
 
-4. Data in volumes **survives container removal** (unless `docker rm -v`)
+## 12. Common Pitfalls & How to Avoid Them
 
-5. **Anonymous volumes** are created by `VOLUME` instruction in Dockerfile
+### Pitfall 1: No volume on database
 
-6. Use **named volumes** in production, **bind mounts** for development
+**BAD:**
 
-7. **:ro** suffix makes mount read-only
+```bash
+docker run -d postgres:15-alpine
+docker rm -f db   # data gone
+```
 
-8. **tmpfs** stores data in memory only (not persisted)
+**GOOD:**
 
-9. Volume data is stored in `/var/lib/docker/volumes/` on Linux
+```bash
+docker run -d -v pgdata:/var/lib/postgresql/data postgres:15-alpine
+```
 
-10. **docker volume prune** removes unused volumes - be careful with data!
+---
 
-11. Container's `/app/node_modules` pattern prevents host from overwriting dependencies
+### Pitfall 2: `docker compose down -v`
 
-12. Volumes can be **shared** between multiple containers
+**BAD:** Deletes all named volumes in compose file.
 
+**GOOD:** `docker compose down` without `-v` when you want to keep data.
 
+---
 
+### Pitfall 3: Bind mount hides container files
+
+**BAD:** Mount empty host dir over `/app/node_modules` — app breaks.
+
+**GOOD:** Anonymous volume trick or named volume for dependencies.
+
+---
+
+### Pitfall 4: Init scripts don't re-run
+
+**BAD:** Change `init.sql`, expect it to run on existing volume.
+
+**GOOD:** Init scripts only run on **empty** data directory. Migrate with proper tool (Flyway, Alembic).
+
+---
+
+### Pitfall 5: `volume prune` on shared machine
+
+**BAD:** Prune "unused" volumes that were intentionally stopped.
+
+**GOOD:** Name volumes clearly (`myapp_prod_pgdata`); document before prune.
+
+---
+
+### Pitfall 6: Assuming same host path on Mac/Windows
+
+**BAD:** Scripts using `inspect` Mountpoint on Mac — path is inside Docker VM.
+
+**GOOD:** Use `docker run` backup pattern instead of direct host path access.
+
+---
+
+### Pitfall 7: Read-write mount for config
+
+**BAD:** App bug corrupts mounted `nginx.conf`.
+
+**GOOD:** `:ro` read-only bind mounts for config.
+
+---
+
+## Summary Cheatsheet
+
+| Task | Command |
+|------|---------|
+| Create volume | `docker volume create pgdata` |
+| List volumes | `docker volume ls` |
+| Run with volume | `docker run -v pgdata:/data ...` |
+| Dev bind mount | `-v $(pwd):/app` |
+| node_modules fix | `-v /app/node_modules` |
+| Backup | `docker run --rm -v vol:/source:ro -v $(pwd):/b alpine tar czf ...` |
+| Cleanup unused | `docker volume prune` ⚠️ |
+| Remove with container | `docker rm -v` (anonymous only) |
+
+**Default choices:** Named volumes for databases; bind mounts for dev code; never `down -v` unless you mean delete data.
+
+---
+
+*Previous: [04-Docker-Networking.md](./04-Docker-Networking.md) · Next: [06-Docker-Security.md](./06-Docker-Security.md)*

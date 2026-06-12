@@ -1,376 +1,636 @@
-# Docker Security - Revision Guide
+# Docker Security — Complete Guide (Basics to Advanced)
 
-## Security Best Practices
+> Containers are not VMs — a mistake in image or runtime config can expose the host. Every security practice explained with scenarios, not checklists to memorize.
 
-### 1. Don't Run as Root
+---
+
+## Table of Contents
+
+1. [What is Docker Security? — The Real Explanation](#1-what-is-docker-security--the-real-explanation)
+2. [Why Security Matters — The Problems It Solves](#2-why-security-matters--the-problems-it-solves)
+3. [Core Concepts & Mental Models](#3-core-concepts--mental-models)
+4. [Image Security — Build Time](#4-image-security--build-time)
+5. [Runtime Security — Run Time](#5-runtime-security--run-time)
+6. [Network & Secret Security](#6-network--secret-security)
+7. [Scanning & CI/CD Integration](#7-scanning--cicd-integration)
+8. [Docker Secrets & Content Trust](#8-docker-secrets--content-trust)
+9. [Advanced Patterns](#9-advanced-patterns)
+10. [When to Use What — Decision Guide](#10-when-to-use-what--decision-guide)
+11. [Common Pitfalls & How to Avoid Them](#11-common-pitfalls--how-to-avoid-them)
+12. [Summary Cheatsheet](#summary-cheatsheet)
+
+---
+
+## 1. What is Docker Security? — The Real Explanation
+
+Docker security is **layered**:
+
+1. **What you put in the image** (dependencies, secrets, users)
+2. **How you run the container** (root, capabilities, read-only FS)
+3. **How containers connect** (network isolation, published ports)
+4. **How you verify and update** (scanning, pinning, patches)
+
+### Analogy: apartment security
+
+- **Image** = what's inside the apartment (flammable materials?)
+- **Runtime flags** = locks on doors and windows
+- **Network** = which rooms connect to the street
+- **Scanning** = building inspection before move-in
+
+A container is **not** a hard security boundary like a VM — it shares the host kernel. Treat compromise as possible; **limit blast radius**.
+
+---
+
+## 2. Why Security Matters — The Problems It Solves
+
+### Problem 1: Container escape via root + kernel bug
+
+Process runs as root inside container → kernel vulnerability → host access.
+
+**Fix:** Non-root `USER`, keep kernel and Docker updated.
+
+### Problem 2: Secrets baked into image layers
+
+`ENV API_KEY=sk_live_xxx` in Dockerfile — visible in `docker history` forever.
+
+**Fix:** Runtime env, secrets manager, BuildKit secrets.
+
+### Problem 3: Huge attack surface
+
+Full Ubuntu image with 400 packages — more CVEs.
+
+**Fix:** Alpine, slim, distroless — minimal packages.
+
+### Problem 4: Database on public internet
+
+`5432:5432` published — automated scans within minutes.
+
+**Fix:** Internal network only; no host port.
+
+### Problem 5: One container eats all RAM — DoS
+
+Runaway memory leak takes down entire host.
+
+**Fix:** `--memory` limits; orchestrator quotas.
+
+### Problem 6: Supply chain — malicious base image
+
+Pull random image from Docker Hub — backdoor preinstalled.
+
+**Fix:** Pin digests, scan, Content Trust, private registry.
+
+---
+
+## 3. Core Concepts & Mental Models
+
+| Term | Meaning |
+|------|---------|
+| **Attack surface** | Ways in — open ports, shells, packages |
+| **Blast radius** | Damage if one container compromised |
+| **Capabilities** | Linux fine-grained privileges (not all-or-nothing root) |
+| **Seccomp** | Syscall filter profile |
+| **Namespace** | Isolation (PID, network, mount) |
+| **Rootless Docker** | Daemon runs without host root |
+| **Distroless** | Image with app only — no shell, no package manager |
+
+### Security layers diagram
+
+```
+┌─────────────────────────────────────────┐
+│  Scan & sign images (CI)                │
+├─────────────────────────────────────────┤
+│  Minimal Dockerfile (USER, no secrets)  │
+├─────────────────────────────────────────┤
+│  Runtime: read-only, cap-drop, limits   │
+├─────────────────────────────────────────┤
+│  Network: internal DB, no extra ports   │
+├─────────────────────────────────────────┤
+│  Host: patched kernel, rootless optional │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## 4. Image Security — Build Time
+
+---
+
+### Practice 1: Don't run as root
+
+**Scenario:** RCE in your Node app — attacker gets shell.
+
+**BAD:**
 
 ```dockerfile
-# Create non-root user
 FROM node:18-alpine
+COPY . .
+CMD ["node", "server.js"]   # runs as root
+```
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+**GOOD:**
 
-# Change ownership before switching user
-COPY --chown=appuser:appgroup . /app
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
+RUN addgroup -S app && adduser -S app -G app
+COPY --chown=app:app package*.json ./
+RUN npm ci --only=production
+COPY --chown=app:app . .
+USER app
+CMD ["node", "server.js"]
+```
 
-USER appuser
+**How it helps:** Attacker is UID 1000 in container, not root — harder to exploit kernel bugs.
+
+---
+
+### Practice 2: Use minimal base images
+
+| Image | Approx size | Shell | Best for |
+|-------|-------------|-------|----------|
+| `node:18` | ~1 GB | yes | Legacy needs |
+| `node:18-slim` | ~200 MB | yes | glibc apps |
+| `node:18-alpine` | ~170 MB | yes | Most Node APIs |
+| `gcr.io/distroless/nodejs18` | ~100 MB | **no** | Production |
+
+```dockerfile
+FROM gcr.io/distroless/nodejs18
+COPY --chown=nonroot:nonroot . /app
+WORKDIR /app
+CMD ["server.js"]
+```
+
+**Trade-off:** Distroless — can't `docker exec` bash for debug. Use separate debug image tag.
+
+---
+
+### Practice 3: Pin specific image tags
+
+**BAD:** `FROM node:latest`
+
+**GOOD:** `FROM node:18.17.0-alpine3.18`
+
+**Better:** Pin by digest (immutable):
+
+```dockerfile
+FROM node:18.17.0-alpine3.18@sha256:abc123...
+```
+
+---
+
+### Practice 4: Never store secrets in images
+
+**BAD:**
+
+```dockerfile
+ENV DATABASE_PASSWORD=supersecret
+COPY .env .
+ARG NPM_TOKEN=xxx
+```
+
+**GOOD:**
+
+```bash
+docker run -e DATABASE_PASSWORD="$DATABASE_PASSWORD" my-api
+```
+
+BuildKit secret (not in layer history):
+
+```bash
+DOCKER_BUILDKIT=1 docker build --secret id=npmrc,src=$HOME/.npmrc -t my-api .
+```
+
+```dockerfile
+# syntax=docker/dockerfile:1
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm ci
+```
+
+---
+
+### Practice 5: Multi-stage builds
+
+```dockerfile
+FROM node:18-alpine AS builder
+RUN npm ci && npm run build
+
+FROM node:18-alpine AS production
+RUN adduser -S app
+COPY --from=builder --chown=app:app /app/dist ./dist
+USER app
+CMD ["node", "dist/server.js"]
+```
+
+**How it helps:** Compiler, devDependencies, `.git`, tests never reach production image.
+
+---
+
+### Practice 6: Remove unnecessary files
+
+```dockerfile
+RUN npm ci --only=production && \
+    npm cache clean --force && \
+    rm -rf .git tests *.md
+```
+
+---
+
+### Practice 7: Use exec form for CMD
+
+**BAD:** `CMD npm start` — runs under `/bin/sh -c`, signal handling issues, injection risk in some setups.
+
+**GOOD:** `CMD ["npm", "start"]`
+
+---
+
+### Secure Dockerfile template
+
+```dockerfile
+FROM node:18.17.0-alpine3.18
+
+RUN addgroup -S app && adduser -S app -G app
+
+WORKDIR /app
+COPY --chown=app:app package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+
+COPY --chown=app:app . .
+
+USER app
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD wget -qO- http://localhost:3000/health || exit 1
 
 CMD ["node", "server.js"]
 ```
 
-### 2. Use Minimal Base Images
+---
 
-```dockerfile
-# Bad - Full OS with unnecessary packages
-FROM ubuntu:22.04
+## 5. Runtime Security — Run Time
 
-# Good - Minimal image
-FROM node:18-alpine
+---
 
-# Best - Distroless (no shell, minimal attack surface)
-FROM gcr.io/distroless/nodejs18
-```
+### Read-only filesystem
 
-**Image Size Comparison:**
-- `node:18` - ~1GB
-- `node:18-slim` - ~200MB
-- `node:18-alpine` - ~170MB
-- `distroless` - ~100MB
-
-### 3. Scan Images for Vulnerabilities
+**Scenario:** Attacker writes webshell to `/app` or modifies binaries.
 
 ```bash
-# Docker Scout (built-in)
-docker scout cve myimage:latest
-
-# Trivy
-trivy image myimage:latest
-
-# Snyk
-snyk container test myimage:latest
-```
-
-### 4. Use Specific Image Tags
-
-```dockerfile
-# Bad - Unpredictable, could break
-FROM node:latest
-FROM node:18
-
-# Good - Specific version, reproducible
-FROM node:18.17.0-alpine3.18
-```
-
-### 5. Don't Store Secrets in Images
-
-```dockerfile
-# NEVER do this
-ENV API_KEY=super_secret_key
-COPY .env /app/.env
-
-# Instead, pass secrets at runtime
-docker run -e API_KEY=secret myimage
-
-# Or use Docker secrets (Swarm)
-docker secret create my_secret secret.txt
-```
-
-### 6. Read-Only Filesystem
-
-```bash
-docker run --read-only myimage
-
-# With tmpfs for temp files
-docker run --read-only --tmpfs /tmp myimage
+docker run --read-only --tmpfs /tmp my-api
 ```
 
 ```yaml
-# Docker Compose
+# Compose
 services:
-  app:
-    image: myapp
+  api:
     read_only: true
     tmpfs:
       - /tmp
       - /var/run
 ```
 
-### 7. Drop Capabilities
+**How it helps:** Runtime file mutations fail — app should only write to explicit volumes or tmpfs.
+
+---
+
+### Drop Linux capabilities
+
+Root in container has many **capabilities** by default. Drop all, add only what's needed.
 
 ```bash
-# Drop all, add only needed
-docker run --cap-drop ALL --cap-add NET_BIND_SERVICE myimage
+docker run --cap-drop ALL --cap-add NET_BIND_SERVICE my-api
 ```
 
+| Capability | Why add |
+|------------|---------|
+| `NET_BIND_SERVICE` | Bind ports < 1024 without root |
+| `CHOWN` | Rare — fix ownership at build |
+
 ```yaml
-# Docker Compose
 services:
-  app:
+  api:
     cap_drop:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
 ```
 
-**Common Capabilities:**
-- `NET_BIND_SERVICE` - Bind to ports below 1024
-- `CHOWN` - Change file ownership
-- `DAC_OVERRIDE` - Bypass file permission checks
-- `SETUID` / `SETGID` - Set user/group ID
+**Default:** `--cap-drop ALL` unless you know you need one.
 
-### 8. Limit Resources
+---
+
+### No new privileges
 
 ```bash
-docker run --memory=512m --cpus=1 myimage
+docker run --security-opt no-new-privileges my-api
+```
+
+Prevents processes from gaining more privileges via setuid binaries.
+
+---
+
+### Resource limits
+
+```bash
+docker run --memory=512m --cpus=1.0 --pids-limit=100 my-api
 ```
 
 ```yaml
-# Docker Compose
 services:
-  app:
+  api:
     deploy:
       resources:
         limits:
           memory: 512M
-          cpus: '1'
-        reservations:
-          memory: 256M
-          cpus: '0.5'
+          cpus: '1.0'
 ```
 
-### 9. Use Security Options
-
-```bash
-# Seccomp profile
-docker run --security-opt seccomp=profile.json myimage
-
-# AppArmor profile
-docker run --security-opt apparmor=docker-default myimage
-
-# No new privileges
-docker run --security-opt no-new-privileges myimage
-```
-
-### 10. Network Security
-
-```bash
-# Don't use host network unless necessary
-docker run --network host myimage  # Avoid
-
-# Use custom bridge networks for isolation
-docker network create --internal backend
-```
+**How it helps:** One container can't exhaust host RAM/CPU (DoS protection).
 
 ---
 
-## Dockerfile Security Checklist
-
-```dockerfile
-# 1. Use specific base image version
-FROM node:18.17.0-alpine3.18
-
-# 2. Create non-root user early
-RUN addgroup -S app && adduser -S app -G app
-
-# 3. Set working directory
-WORKDIR /app
-
-# 4. Copy dependency files first (layer caching)
-COPY --chown=app:app package*.json ./
-
-# 5. Install dependencies
-RUN npm ci --only=production && \
-    npm cache clean --force
-
-# 6. Copy app files with correct ownership
-COPY --chown=app:app . .
-
-# 7. Remove unnecessary files
-RUN rm -rf .git .env* *.md tests/
-
-# 8. Switch to non-root user
-USER app
-
-# 9. Use exec form for CMD (no shell injection)
-CMD ["node", "server.js"]
-
-# 10. Document exposed ports
-EXPOSE 3000
-
-# 11. Add healthcheck
-HEALTHCHECK --interval=30s --timeout=3s \
-  CMD wget --spider http://localhost:3000/health || exit 1
-```
-
----
-
-## Multi-Stage Build for Security
-
-```dockerfile
-# Build stage - has dev dependencies
-FROM node:18-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-# Production stage - minimal
-FROM node:18-alpine AS production
-WORKDIR /app
-
-# Create non-root user
-RUN addgroup -S app && adduser -S app -G app
-
-# Copy only production dependencies
-COPY --chown=app:app package*.json ./
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy built assets
-COPY --chown=app:app --from=builder /app/dist ./dist
-
-USER app
-EXPOSE 3000
-CMD ["node", "dist/server.js"]
-```
-
----
-
-## Docker Content Trust
-
-Sign and verify images.
+### Avoid privileged mode
 
 ```bash
-# Enable content trust
-export DOCKER_CONTENT_TRUST=1
-
-# Push signed image
-docker push myrepo/myimage:v1
-
-# Pull only signed images
-docker pull myrepo/myimage:v1  # Fails if not signed
+# NEVER unless you understand the risk
+docker run --privileged myimage
 ```
+
+`--privileged` ≈ root on host — disables most isolation.
 
 ---
 
-## Docker Secrets (Swarm Mode)
+### Seccomp & AppArmor
 
 ```bash
-# Create secret
-echo "my_password" | docker secret create db_password -
-
-# Use in service
-docker service create \
-  --name myapp \
-  --secret db_password \
-  myimage
+docker run --security-opt seccomp=default.json my-api
+docker run --security-opt apparmor=docker-default my-api
 ```
+
+Custom seccomp profiles restrict syscalls — advanced hardening for high-security environments.
+
+---
+
+## 6. Network & Secret Security
+
+### Don't publish internal services
 
 ```yaml
-# docker-compose.yml (Swarm)
 services:
-  app:
-    image: myapp
+  db:
+    # NO ports: section
+    networks:
+      - internal
+networks:
+  internal:
+    internal: true
+```
+
+### Avoid host network unless required
+
+```bash
+docker run --network host my-api   # shares host network stack
+```
+
+### Environment variables for secrets (dev only)
+
+```bash
+docker run -e API_KEY="$API_KEY" my-api
+```
+
+**Warning:** Env vars visible in `docker inspect` and process list. Production: use Docker Swarm secrets, Vault, AWS Secrets Manager, K8s secrets.
+
+---
+
+## 7. Scanning & CI/CD Integration
+
+### Why scan?
+
+Base image has OpenSSL CVE. You never wrote that code — still your problem in prod.
+
+### Trivy
+
+```bash
+trivy image my-api:v1
+trivy image --severity CRITICAL,HIGH my-api:v1
+```
+
+### Docker Scout
+
+```bash
+docker scout cve my-api:v1
+docker scout recommendations my-api:v1
+```
+
+### CI pipeline example
+
+```yaml
+# GitHub Actions
+- name: Build
+  run: docker build -t my-api:${{ github.sha }} .
+
+- name: Scan
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: my-api:${{ github.sha }}
+    severity: CRITICAL,HIGH
+    exit-code: '1'
+```
+
+**How it helps:** Block deploy on critical CVEs — fix base image or patch before production.
+
+---
+
+## 8. Docker Secrets & Content Trust
+
+### Docker Secrets (Swarm mode)
+
+```bash
+echo "db_password" | docker secret create db_password -
+
+docker service create \
+  --name api \
+  --secret db_password \
+  my-api
+```
+
+Inside container: `/run/secrets/db_password` — memory filesystem, not in image.
+
+```yaml
+services:
+  api:
     secrets:
       - db_password
-      
 secrets:
   db_password:
     external: true
 ```
 
-Inside container, secret available at `/run/secrets/db_password`.
+### Docker Content Trust
+
+Sign and verify images:
+
+```bash
+export DOCKER_CONTENT_TRUST=1
+docker push myregistry/my-api:v1   # signs on push
+docker pull myregistry/my-api:v1   # verifies signature
+```
+
+**How it helps:** Supply chain — ensures image came from your team and wasn't tampered with.
 
 ---
 
-## Container Runtime Security
+## 9. Advanced Patterns
 
-### Privileged Mode - AVOID!
+### Pattern 1: Rootless Docker
 
-```bash
-# Never use unless absolutely necessary
-docker run --privileged myimage  # Full host access!
-```
-
-### User Namespaces
-
-Remap container root to unprivileged host user.
-
-```json
-// /etc/docker/daemon.json
-{
-  "userns-remap": "default"
-}
-```
-
-### Rootless Docker
-
-Run Docker daemon as non-root user.
+Run Docker daemon as non-root user on host.
 
 ```bash
-# Install rootless Docker
 dockerd-rootless-setuptool.sh install
 ```
 
----
+**How it helps:** Even daemon compromise isn't host root.
 
-## Logging & Auditing
+### Pattern 2: User namespaces
 
-```bash
-# Container logs
-docker logs container_name
-
-# Docker events
-docker events
-
-# Inspect container for security settings
-docker inspect container_name | jq '.[0].HostConfig.SecurityOpt'
+```json
+// /etc/docker/daemon.json
+{ "userns-remap": "default" }
 ```
 
----
+Container root mapped to unprivileged host user.
 
-## Security Scanning in CI/CD
+### Pattern 3: Separate read-only config mounts
 
 ```yaml
-# GitHub Actions example
-- name: Build image
-  run: docker build -t myimage:${{ github.sha }} .
-
-- name: Scan image
-  uses: aquasecurity/trivy-action@master
-  with:
-    image-ref: myimage:${{ github.sha }}
-    severity: 'CRITICAL,HIGH'
-    exit-code: '1'  # Fail pipeline on vulnerabilities
+volumes:
+  - ./config.yml:/app/config.yml:ro
 ```
+
+### Pattern 4: Distroless + debug sidecar
+
+Production: distroless image. Debug: attach `docker debug` (Docker Desktop) or ephemeral debug container on same network.
+
+### Pattern 5: Image signing in registry
+
+GHCR, ECR, Harbor support signing and vulnerability scanning on push.
 
 ---
 
-## Interview Quick Facts
+## 10. When to Use What — Decision Guide
 
-1. **Never run as root** - Create and switch to non-root user
+```
+Hardening priority?
+ │
+ ├─ Quick wins (do today)
+ │     ├─ non-root USER in Dockerfile
+ │     ├─ pin image tags
+ │     ├─ no secrets in image
+ │     ├─ scan in CI
+ │     └─ don't publish DB ports
+ │
+ ├─ Production API
+ │     ├─ alpine/slim or distroless
+ │     ├─ multi-stage build
+ │     ├─ read_only + tmpfs
+ │     ├─ cap-drop ALL
+ │     └─ memory/CPU limits
+ │
+ └─ High security / compliance
+       ├─ seccomp profiles
+       ├─ Content Trust
+       ├─ rootless Docker
+       └─ external secrets manager
+```
 
-2. **Use minimal images** - alpine, slim, or distroless
+| Control | Dev | Production |
+|---------|-----|------------|
+| Non-root USER | ✓ | ✓ required |
+| Image scanning | optional | ✓ required |
+| Read-only FS | optional | ✓ recommended |
+| cap-drop ALL | optional | ✓ recommended |
+| Secrets in .env | OK (gitignored) | ✗ use vault |
+| Distroless | optional | ✓ when no shell needed |
 
-3. **Scan images** for vulnerabilities before deployment
+---
 
-4. **Don't store secrets** in images or Dockerfiles
+## 11. Common Pitfalls & How to Avoid Them
 
-5. **Use specific tags** - never use `latest` in production
+### Pitfall 1: Secrets in Dockerfile ENV
 
-6. **Drop capabilities** - Start with `--cap-drop ALL`
+**BAD:** `ENV AWS_SECRET_KEY=...`
 
-7. **Read-only filesystems** prevent runtime modifications
+**GOOD:** Runtime injection or secrets manager.
 
-8. **Multi-stage builds** reduce attack surface
+---
 
-9. **Resource limits** prevent DoS attacks
+### Pitfall 2: `--privileged` for convenience
 
-10. **Privileged mode** gives full host access - avoid!
+**BAD:** "App needs Docker inside Docker" → `--privileged`
 
-11. **Docker Content Trust** ensures image authenticity
+**GOOD:** Docker socket mount (still risky) or proper CI job — never privileged by default.
 
-12. **Rootless Docker** runs daemon without root privileges
+---
 
+### Pitfall 3: Mounting Docker socket
 
+```bash
+-v /var/run/docker.sock:/var/run/docker.sock
+```
 
+Container can control host Docker — **equivalent to root on host**. Only in trusted admin tools.
+
+---
+
+### Pitfall 4: Trusting `latest` images
+
+**BAD:** Production pulls `nginx:latest` daily — behavior changes.
+
+**GOOD:** Pin version + digest; update deliberately after scan.
+
+---
+
+### Pitfall 5: Ignoring scan results
+
+**BAD:** "CVE in openssl in base image — we'll fix later" for 6 months.
+
+**GOOD:** Rebuild on patched base weekly or on critical CVE immediately.
+
+---
+
+### Pitfall 6: Running database as root with published port
+
+**BAD:** Default postgres image + `5432:5432` on public cloud.
+
+**GOOD:** Internal network, strong password, no public port, non-default credentials.
+
+---
+
+### Pitfall 7: Shell in production for "just in case"
+
+**BAD:** Full Ubuntu image so ops can ssh-like debug.
+
+**GOOD:** Slim image + `docker exec` with debug profile or sidecar.
+
+---
+
+## Summary Cheatsheet
+
+| Practice | How |
+|----------|-----|
+| Non-root | `USER app` in Dockerfile |
+| Small image | alpine / slim / distroless + multi-stage |
+| No secrets in image | runtime `-e`, BuildKit `--secret` |
+| Pin versions | `node:18.17.0-alpine3.18@sha256:...` |
+| Scan | `trivy image`, `docker scout cve` |
+| Limit resources | `--memory`, `--cpus` |
+| Drop caps | `--cap-drop ALL` |
+| Read-only | `--read-only --tmpfs /tmp` |
+| Network | DB on internal network, no `-p` |
+| Never | `--privileged`, secrets in ENV |
+
+**Default production posture:** Non-root + pinned alpine + multi-stage + scan in CI + internal DB network + resource limits.
+
+---
+
+*Previous: [05-Docker-Volumes.md](./05-Docker-Volumes.md) · Next: [07-Docker-Interview-Questions.md](./07-Docker-Interview-Questions.md)*

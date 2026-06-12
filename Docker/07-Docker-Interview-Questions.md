@@ -1,430 +1,780 @@
-# Docker Interview Questions
+# Docker Interview & Scenario Guide — Complete Reference
 
-## Basic Level
+> 25 questions reframed as real scenarios — understand the reasoning behind each answer so interviews and on-call debugging feel natural, not memorized.
+
+---
+
+## Table of Contents
+
+1. [How to Use This Guide](#how-to-use-this-guide)
+2. [Basic Level — Core Concepts](#2-basic-level--core-concepts)
+3. [Intermediate Level — Networking, Volumes, Optimization](#3-intermediate-level--networking-volumes-optimization)
+4. [Advanced Level — Security, Orchestration, Internals](#4-advanced-level--security-orchestration-internals)
+5. [Scenario-Based Troubleshooting](#5-scenario-based-troubleshooting)
+6. [Quick Comparison Tables](#6-quick-comparison-tables)
+7. [Summary Cheatsheet](#summary-cheatsheet)
+
+---
+
+## How to Use This Guide
+
+Each entry follows:
+
+1. **The scenario** — what you'd face in an interview or on-call
+2. **The core answer** — short, direct
+3. **Why it works** — mental model
+4. **Commands / code** — what you'd actually run
+5. **Follow-up traps** — what interviewers ask next
+
+Cross-references point to full guides: [Basics](./01-Docker-Basics.md), [Dockerfile](./02-Dockerfile.md), [Compose](./03-Docker-Compose.md), [Networking](./04-Docker-Networking.md), [Volumes](./05-Docker-Volumes.md), [Security](./06-Docker-Security.md).
+
+---
+
+## 2. Basic Level — Core Concepts
+
+---
 
 ### Q1: What is Docker and why is it used?
-**Answer:** Docker is a containerization platform that packages applications with their dependencies into lightweight, portable containers. It's used for:
-- Consistent environments (dev, staging, production)
-- Faster deployment and scaling
-- Resource efficiency compared to VMs
-- Microservices architecture enablement
-- CI/CD pipeline integration
 
-### Q2: What is the difference between a Docker image and a container?
-**Answer:**
-- **Image**: Read-only template containing application code, libraries, and dependencies. Like a class in OOP.
-- **Container**: Running instance of an image with a writable layer. Like an object instance.
+**Scenario:** Interviewer asks you to explain Docker to a non-technical stakeholder, then to an engineer.
+
+**Core answer:** Docker packages an application and its dependencies into a **portable image** that runs as an **isolated container** on any machine with Docker installed.
+
+**Why it works:** Same artifact from laptop → CI → production. No "install Node 18 and these 12 libraries" README drift.
+
+**Problems it solves:**
+
+| Problem | Without Docker | With Docker |
+|---------|----------------|-------------|
+| Environment drift | Works on my machine | Same image everywhere |
+| Slow onboarding | Hours of setup | `docker compose up` |
+| Dependency conflict | Global Python 3.9 vs 3.12 | Isolated containers |
+| Deploy inconsistency | Manual server config | Pull tagged image |
+
+**Follow-up trap:** "Is Docker a VM?" — No. Containers share the host kernel; VMs virtualize hardware with guest OS each.
+
+---
+
+### Q2: Image vs container?
+
+**Scenario:** Teammate says "delete the nginx image to restart the server."
+
+**Core answer:**
+- **Image** = read-only blueprint (class)
+- **Container** = running (or stopped) instance with writable layer (object)
 
 ```bash
-# Image = Blueprint
-docker pull nginx  # Download image
-
-# Container = Running instance
-docker run nginx   # Create container from image
+docker pull nginx:alpine    # image — on disk, not serving traffic
+docker run -d --name web nginx:alpine   # container — process running
+docker stop web             # container stopped, image still exists
+docker rm web               # container gone, image still exists
+docker rmi nginx:alpine     # image gone
 ```
+
+**Why it matters:** Stopping/deleting containers doesn't remove images. Restarting usually means `docker start` or new `docker run`, not `pull` again.
+
+---
 
 ### Q3: What is a Dockerfile?
-**Answer:** A text file with instructions to build a Docker image. Each instruction creates a layer.
+
+**Scenario:** You need to package your Node API for deployment.
+
+**Core answer:** Text recipe; each instruction adds a layer.
 
 ```dockerfile
-FROM node:18-alpine    # Base image
-WORKDIR /app           # Set working directory
-COPY package*.json ./  # Copy files
-RUN npm install        # Execute command
-COPY . .               # Copy remaining files
-EXPOSE 3000            # Document port
-CMD ["node", "app.js"] # Default command
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+USER node
+EXPOSE 3000
+CMD ["node", "server.js"]
 ```
 
-### Q4: What is the difference between CMD and ENTRYPOINT?
-**Answer:**
-- **CMD**: Default command/arguments. Can be overridden by `docker run` args.
-- **ENTRYPOINT**: Main executable. Harder to override (needs `--entrypoint`).
+```bash
+docker build -t my-api:v1 .
+docker run -d -p 3000:3000 my-api:v1
+```
+
+**Why order matters:** `COPY package*.json` before `COPY . .` caches `npm ci` when only source code changes. See [02-Dockerfile.md](./02-Dockerfile.md).
+
+---
+
+### Q4: CMD vs ENTRYPOINT?
+
+**Scenario:** You build a CLI tool image. Users should run different scripts but always through `python`.
+
+**Core answer:**
+
+| | CMD | ENTRYPOINT |
+|---|-----|------------|
+| Role | Default args / default command | Fixed executable |
+| Override | `docker run img args` replaces CMD | Args replace CMD; need `--entrypoint` to change program |
 
 ```dockerfile
-# CMD can be overridden
-CMD ["npm", "start"]
-# docker run myimage npm test → runs "npm test"
-
-# ENTRYPOINT is fixed, CMD provides defaults
-ENTRYPOINT ["node"]
-CMD ["app.js"]
-# docker run myimage script.js → runs "node script.js"
+ENTRYPOINT ["python"]
+CMD ["app.py"]
 ```
+
+```bash
+docker run mytool              # python app.py
+docker run mytool migrate.py   # python migrate.py
+```
+
+**Node API pattern:** Usually `CMD ["node", "server.js"]` only — no ENTRYPOINT needed.
+
+**Follow-up trap:** Shell form `CMD npm start` vs exec form `CMD ["npm", "start"]` — exec form handles signals correctly (PID 1 issue).
+
+---
 
 ### Q5: What is Docker Compose?
-**Answer:** Tool for defining and running multi-container applications using a YAML file.
+
+**Scenario:** Your app needs API + Postgres + Redis. You're tired of three long `docker run` commands.
+
+**Core answer:** YAML file defining multiple services; one command starts the stack.
 
 ```yaml
-version: "3.8"
 services:
-  web:
-    image: nginx
+  api:
+    build: .
     ports:
-      - "80:80"
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:secret@db:5432/app
+    depends_on:
+      - db
   db:
-    image: postgres
+    image: postgres:15-alpine
     environment:
       POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
 ```
 
 ```bash
-docker-compose up -d    # Start all services
-docker-compose down     # Stop and remove
+docker compose up -d
 ```
+
+**Key insight:** Service name `db` is the hostname inside the network. Not `localhost`.
+
+Full guide: [03-Docker-Compose.md](./03-Docker-Compose.md).
 
 ---
 
-## Intermediate Level
-
-### Q6: Explain Docker networking types.
-**Answer:**
-1. **Bridge** (default): Private network on host, containers communicate via IP/name
-2. **Host**: Container uses host's network directly, no isolation
-3. **None**: No networking, complete isolation
-4. **Overlay**: Multi-host networking for Docker Swarm
-5. **Macvlan**: Assigns MAC address, appears as physical device
-
-### Q7: What are Docker volumes and why are they used?
-**Answer:** Volumes provide persistent storage for containers.
-
-```bash
-# Named volume (Docker managed)
-docker run -v mydata:/app/data myimage
-
-# Bind mount (host directory)
-docker run -v /host/path:/container/path myimage
-```
-
-**Why volumes?**
-- Data persists beyond container lifecycle
-- Can be shared between containers
-- Better performance than bind mounts
-- Easier backup and migration
-
-### Q8: How do you optimize Docker image size?
-**Answer:**
-1. Use minimal base images (alpine, slim, distroless)
-2. Multi-stage builds
-3. Combine RUN commands to reduce layers
-4. Clean up in same layer as install
-5. Use .dockerignore
-6. Remove unnecessary files
-
-```dockerfile
-# Multi-stage build
-FROM node:18 AS builder
-WORKDIR /app
-COPY . .
-RUN npm ci && npm run build
-
-FROM node:18-alpine
-COPY --from=builder /app/dist ./dist
-CMD ["node", "dist/app.js"]
-```
-
-### Q9: What is the difference between COPY and ADD?
-**Answer:**
-- **COPY**: Simply copies files/directories from host to container
-- **ADD**: Same as COPY, plus:
-  - Can extract tar archives automatically
-  - Can download from URLs (not recommended)
-
-**Best practice:** Use COPY unless you need tar extraction.
-
-### Q10: How do containers communicate with each other?
-**Answer:**
-1. **Same network**: Use container name as hostname
-2. **Links (deprecated)**: `--link` flag
-3. **Docker Compose**: Automatic DNS on default network
-
-```yaml
-services:
-  web:
-    networks:
-      - backend
-  api:
-    networks:
-      - backend
-  # web can reach api at http://api:port
-```
-
-### Q11: What is Docker layer caching and how do you optimize it?
-**Answer:** Docker caches each layer and reuses unchanged layers.
-
-**Optimization:**
-```dockerfile
-# Bad - cache invalidated on any code change
-COPY . .
-RUN npm install
-
-# Good - dependencies cached separately
-COPY package*.json ./
-RUN npm install
-COPY . .  # Source code changes don't affect npm install cache
-```
-
-### Q12: How do you pass environment variables to containers?
-**Answer:**
-```bash
-# Single variable
-docker run -e MY_VAR=value myimage
-
-# From file
-docker run --env-file .env myimage
-```
-
-```yaml
-# Docker Compose
-services:
-  app:
-    environment:
-      - MY_VAR=value
-    env_file:
-      - .env
-```
+## 3. Intermediate Level — Networking, Volumes, Optimization
 
 ---
 
-## Advanced Level
+### Q6: Explain Docker network types
 
-### Q13: How do you handle secrets in Docker?
-**Answer:**
-1. **Environment variables** (runtime, not in Dockerfile)
-2. **Docker Secrets** (Swarm mode) - stored encrypted
-3. **External secret managers** (Vault, AWS Secrets Manager)
-4. **Build-time secrets** (`--secret` flag)
+**Scenario:** Pick network mode for local dev API, high-perf metrics agent, isolated batch job, Swarm cluster.
+
+| Driver | What | When |
+|--------|------|------|
+| **bridge** (custom) | Private LAN on host + DNS | Default for dev/prod single host |
+| **host** | Shares host network | Linux perf, no isolation |
+| **none** | Loopback only | No network needed |
+| **overlay** | Multi-host VXLAN | Docker Swarm |
+| **macvlan** | Real MAC on physical LAN | Legacy apps |
 
 ```bash
-# Docker secrets (Swarm)
-docker secret create db_pass secret.txt
-docker service create --secret db_pass myimage
-# Secret available at /run/secrets/db_pass
+docker network create app-net
+docker run -d --name db --network app-net postgres
+docker run -d --name api --network app-net -e DB_HOST=db my-api
 ```
 
-### Q14: Explain Docker security best practices.
-**Answer:**
-1. Run as non-root user
-2. Use minimal base images
-3. Scan images for vulnerabilities
-4. Don't store secrets in images
-5. Use read-only filesystem
-6. Drop unnecessary capabilities
-7. Limit resources (memory, CPU)
-8. Use multi-stage builds
-9. Sign and verify images (Content Trust)
-10. Keep Docker and images updated
+**Trap:** Default `bridge` (not custom) — **no DNS by name**. Always use user-defined bridge or Compose.
 
-### Q15: What is the difference between Docker Swarm and Kubernetes?
-**Answer:**
+Guide: [04-Docker-Networking.md](./04-Docker-Networking.md).
 
-| Feature | Docker Swarm | Kubernetes |
-|---------|--------------|------------|
-| **Complexity** | Simple | Complex |
-| **Setup** | Easy, built into Docker | Requires separate setup |
-| **Scaling** | Good | Excellent |
-| **Auto-healing** | Basic | Advanced |
-| **Load Balancing** | Built-in | Requires ingress controller |
-| **Community** | Smaller | Larger |
-| **Use Case** | Simpler deployments | Enterprise, complex apps |
+---
 
-### Q16: How do you debug a running container?
-**Answer:**
+### Q7: What are volumes and why?
+
+**Scenario:** You `docker rm` your Postgres container and lose all users.
+
+**Core answer:** Volumes persist data outside the container writable layer.
+
 ```bash
-# Execute shell in container
-docker exec -it container_id sh
+# Named volume (production DB)
+docker run -d -v pgdata:/var/lib/postgresql/data postgres:15-alpine
 
-# View logs
-docker logs container_id
-docker logs -f container_id  # Follow
-
-# Inspect container
-docker inspect container_id
-
-# View resource usage
-docker stats container_id
-
-# View processes
-docker top container_id
-
-# Copy files for inspection
-docker cp container_id:/path/file ./local
+# Bind mount (dev code)
+docker run -d -v "$(pwd)":/app -w /app node:18-alpine npm run dev
 ```
 
-### Q17: What are multi-stage builds and why use them?
-**Answer:** Multi-stage builds use multiple FROM statements to create smaller, more secure images.
+| Type | Use |
+|------|-----|
+| Named volume | Databases, uploads |
+| Bind mount | Live code editing |
+| tmpfs | Secrets in RAM |
+
+**Survives:** `docker rm` — yes (volume). **Lost on:** `docker volume rm` or `compose down -v`.
+
+Guide: [05-Docker-Volumes.md](./05-Docker-Volumes.md).
+
+---
+
+### Q8: How do you optimize image size?
+
+**Scenario:** Image is 1.8 GB; deploy takes 8 minutes.
+
+**Step-by-step approach:**
+
+```
+1. Check what's big     → docker history my-api:v1
+2. Smaller base         → node:18-alpine vs node:18
+3. Multi-stage build    → builder stage not in final image
+4. .dockerignore        → exclude node_modules, .git
+5. Combine RUN + cleanup → rm apt cache same layer
+6. Production deps only → npm ci --only=production
+```
 
 ```dockerfile
-# Stage 1: Build
-FROM node:18 AS builder
+FROM node:18-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-# Stage 2: Production (only runtime needed)
 FROM node:18-alpine
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-CMD ["node", "dist/app.js"]
+USER node
+CMD ["node", "dist/server.js"]
 ```
 
-**Benefits:**
-- Smaller final image (no build tools)
-- Fewer vulnerabilities
-- Faster deployment
-
-### Q18: How does Docker handle resource limits?
-**Answer:** Docker uses Linux cgroups (control groups).
-
-```bash
-# Memory limit
-docker run --memory=512m myimage
-
-# CPU limit
-docker run --cpus=1.5 myimage
-
-# Memory + CPU
-docker run --memory=512m --cpus=1 myimage
-```
-
-```yaml
-# Docker Compose
-services:
-  app:
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '1'
-```
-
-### Q19: Explain the Docker build context.
-**Answer:** Build context is the set of files at the specified path sent to Docker daemon for building.
-
-```bash
-docker build -t myimage .  # Current directory is context
-docker build -t myimage /path/to/context
-```
-
-**Important:**
-- Large context = slow builds
-- Use `.dockerignore` to exclude files
-- Only files in context can be copied to image
-
-```
-# .dockerignore
-node_modules
-.git
-*.log
-```
-
-### Q20: What happens when you run `docker run`?
-**Answer:**
-1. Docker client sends request to daemon
-2. Daemon checks if image exists locally
-3. If not, pulls image from registry
-4. Creates writable container layer on top of image
-5. Creates network interface and assigns IP
-6. Starts container and runs specified command
-7. Container runs until command completes or stopped
+**Typical result:** 1.8 GB → 150–250 MB.
 
 ---
 
-## Scenario-Based Questions
+### Q9: COPY vs ADD?
 
-### Q21: A container keeps restarting. How do you troubleshoot?
-**Answer:**
-```bash
-# Check logs
-docker logs container_id
+**Scenario:** Dockerfile needs to add files; teammate uses `ADD` for everything.
 
-# Check exit code
-docker inspect container_id | grep ExitCode
+**Core answer:** Use `COPY` for files. `ADD` only when auto-extracting local tar archives.
 
-# Check events
-docker events --since 10m
-
-# Run interactively
-docker run -it myimage sh
-
-# Check health
-docker inspect --format='{{.State.Health.Status}}' container_id
+```dockerfile
+COPY package*.json ./          # ✓
+ADD app.tar.gz /app/           # OK — tar extract
+ADD https://x.com/f /app/      # ✗ — use curl in RUN instead
 ```
 
-### Q22: How would you deploy a zero-downtime update?
-**Answer:**
-1. **Rolling update** (Swarm/K8s)
-2. **Blue-Green deployment**
-3. **Health checks** before routing traffic
+**Why:** `COPY` is predictable; `ADD` URL fetch is not cached well and is surprising in review.
+
+---
+
+### Q10: How do containers communicate?
+
+**Scenario:** API can't reach database — `connection refused` on `localhost:5432`.
+
+**Core answer:** Same user-defined network or Compose network — use **service/container name** as hostname.
 
 ```yaml
-# Docker Swarm rolling update
+services:
+  api:
+    environment:
+      DB_HOST: db
+  db:
+    image: postgres
+```
+
+```bash
+# Manual
+docker network create net
+docker run -d --name db --network net postgres
+docker run -d --name api --network net -e DB_HOST=db my-api
+```
+
+**Don't use:** `--link` (deprecated). **Don't use:** `localhost` for other containers.
+
+---
+
+### Q11: Layer caching — how to optimize?
+
+**Scenario:** Every code change triggers 3-minute `npm ci`.
+
+**Walkthrough:**
+
+```
+Build 1: all layers built
+Build 2: change server.js only
+  FROM           cached
+  COPY package*  cached
+  RUN npm ci     cached    ← saved 3 minutes
+  COPY . .       rebuild
+  CMD            rebuild
+```
+
+**BAD Dockerfile:**
+
+```dockerfile
+COPY . .
+RUN npm ci
+```
+
+**GOOD Dockerfile:**
+
+```dockerfile
+COPY package*.json ./
+RUN npm ci
+COPY . .
+```
+
+---
+
+### Q12: How to pass environment variables?
+
+**Scenario:** Different config for dev/staging/prod without rebuilding image.
+
+```bash
+# Single
+docker run -e NODE_ENV=production -e DB_HOST=db my-api
+
+# File
+docker run --env-file .env my-api
+```
+
+```yaml
+services:
+  api:
+    environment:
+      NODE_ENV: production
+      API_KEY: ${API_KEY}
+    env_file:
+      - .env
+```
+
+**Build-time vs runtime:**
+- `ARG` — build only (`docker build --build-arg`)
+- `ENV` — build + runtime (visible in `docker inspect`)
+
+**Security:** Never put production secrets in Dockerfile `ENV`.
+
+---
+
+## 4. Advanced Level — Security, Orchestration, Internals
+
+---
+
+### Q13: How do you handle secrets?
+
+**Scenario:** `.env` with `DATABASE_PASSWORD` — safe for dev, not for production image.
+
+| Approach | When |
+|----------|------|
+| Runtime `-e` / env_file | Dev, CI-injected |
+| Docker Swarm secrets | Swarm — `/run/secrets/` |
+| Vault / AWS SM / K8s secrets | Production |
+| BuildKit `--secret` | npm tokens at build, not in layers |
+
+```bash
+# Swarm
+echo "pass" | docker secret create db_pass -
+docker service create --secret db_pass my-api
+```
+
+**Trap:** Secrets in `ENV` in Dockerfile are in image history forever.
+
+Guide: [06-Docker-Security.md](./06-Docker-Security.md).
+
+---
+
+### Q14: Docker security best practices?
+
+**Scenario:** Security review before production launch.
+
+**Priority order:**
+
+```
+1. USER non-root in Dockerfile
+2. Pin base image tag (not latest)
+3. Multi-stage + minimal base (alpine/distroless)
+4. Scan in CI (trivy, scout)
+5. No secrets in image
+6. --cap-drop ALL, read-only FS
+7. Resource limits (--memory, --cpus)
+8. DB not published to host
+9. Never --privileged
+10. Keep Docker + images patched
+```
+
+---
+
+### Q15: Docker Swarm vs Kubernetes?
+
+**Scenario:** Team debates orchestration for 50-microservice platform vs small internal tool.
+
+| | Swarm | Kubernetes |
+|---|-------|------------|
+| Complexity | Low | High |
+| Built into Docker | Yes | Separate install |
+| Ecosystem | Smaller | Huge |
+| Enterprise adoption | Declining | Standard |
+| Best for | Simple multi-host, legacy | Large scale, cloud-native |
+
+**Interview answer:** Swarm is simpler, built-in; K8s is industry standard for complex orchestration, auto-scaling, ecosystem (Helm, operators). Many teams use managed K8s (EKS, GKE) or serverless containers (Cloud Run, Fargate) instead of self-managing either.
+
+---
+
+### Q16: How do you debug a running container?
+
+**Scenario:** API returns 500 in staging; container is running.
+
+**Systematic flow:**
+
+```
+docker compose ps                    # running? healthy?
+docker compose logs -f api           # application errors
+docker compose exec api sh           # shell inside (if available)
+docker compose exec api env | grep DB  # config check
+docker stats api                     # OOM?
+docker inspect api --format '{{.State.ExitCode}}'  # if restarting
+```
+
+```bash
+# Standalone
+docker logs -f --tail 100 container_id
+docker exec -it container_id sh
+docker top container_id
+docker cp container_id:/app/logs ./logs
+```
+
+**Restart loop:** `docker logs` first — usually app crash on boot (bad env, DB not ready).
+
+---
+
+### Q17: Multi-stage builds — why?
+
+**Scenario:** Final image includes TypeScript compiler, test files, devDependencies.
+
+**Core answer:** Multiple `FROM` stages; copy only artifacts to final stage.
+
+**Benefits:**
+- Smaller image → faster deploy, less attack surface
+- No compiler in production → fewer CVEs
+- Clear separation build vs runtime
+
+```dockerfile
+FROM node:18-alpine AS builder
+RUN npm ci && npm run build
+
+FROM node:18-alpine
+COPY --from=builder /app/dist ./dist
+CMD ["node", "dist/server.js"]
+```
+
+---
+
+### Q18: Resource limits?
+
+**Scenario:** One container OOMs and kills host services.
+
+**Core answer:** Linux **cgroups** — Docker sets limits:
+
+```bash
+docker run --memory=512m --cpus=1.0 --pids-limit=200 my-api
+```
+
+```yaml
+deploy:
+  resources:
+    limits:
+      memory: 512M
+      cpus: '1.0'
+```
+
+**OOM behavior:** Container killed (exit 137), may restart per policy — not necessarily whole host.
+
+---
+
+### Q19: What is the build context?
+
+**Scenario:** `docker build` sends 2 GB to daemon; build is slow.
+
+**Core answer:** All files in the path you pass (`docker build .`) sent to daemon — except `.dockerignore`.
+
+```bash
+docker build -t my-api .     # . is context
+```
+
+```
+Project/
+├── Dockerfile
+├── .dockerignore   ← exclude node_modules, .git
+├── src/
+└── node_modules/   ← must be ignored
+```
+
+**Trap:** `COPY` can only access files **inside** context. Can't `COPY ../other-project/file`.
+
+---
+
+### Q20: What happens when you `docker run`?
+
+**Scenario:** Interviewer wants step-by-step internals.
+
+**Flow:**
+
+```
+docker run -d -p 3000:3000 my-api:v1
+        │
+        ▼
+Client sends request to dockerd
+        │
+        ▼
+Image exists locally? ──NO──► docker pull
+        │
+       YES
+        ▼
+Create writable container layer on image
+        │
+        ▼
+Create network namespace, assign IP
+        │
+        ▼
+Apply port mappings, env, volumes
+        │
+        ▼
+Start process (CMD/ENTRYPOINT)
+        │
+        ▼
+Container state: running (or exited if command ends)
+```
+
+**Kernel features:** namespaces (isolation), cgroups (limits), union filesystem (layers).
+
+---
+
+## 5. Scenario-Based Troubleshooting
+
+---
+
+### Q21: Container keeps restarting
+
+**Scenario:** `docker ps` shows `Restarting (1) 5 seconds ago`.
+
+**Debug flow:**
+
+```
+docker logs container_id --tail 50     # why did it exit?
+docker inspect container_id \
+  --format 'ExitCode={{.State.ExitCode}} OOM={{.State.OOMKilled}}'
+docker events --since 10m --filter container=container_id
+```
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | Clean exit (maybe CMD finished — wrong for server) |
+| 1 | Application error |
+| 137 | SIGKILL — often OOM |
+| 139 | Segfault |
+
+**Common causes:**
+- Missing env var (`DATABASE_URL`)
+- DB not ready (add healthcheck + depends_on)
+- Wrong CMD — process exits immediately
+- Port already in use (container fails start)
+
+**Fix test:** Run interactively without `-d`:
+
+```bash
+docker run -it --rm my-api sh
+# manually: node server.js — see error
+```
+
+---
+
+### Q22: Zero-downtime deployment?
+
+**Scenario:** Deploy v2 without dropping active connections.
+
+**Approaches:**
+
+| Strategy | How |
+|----------|-----|
+| **Rolling update** | K8s/Swarm replaces instances one by one |
+| **Blue-green** | Switch load balancer from blue to green stack |
+| **Health checks** | New container must pass before traffic |
+
+```yaml
+# Swarm example
 deploy:
   replicas: 3
   update_config:
     parallelism: 1
     delay: 10s
     failure_action: rollback
+  rollback_config:
+    parallelism: 1
 ```
 
-### Q23: Container can't connect to database. How do you debug?
-**Answer:**
-```bash
-# Check both containers on same network
-docker network inspect network_name
+**Plain `docker compose` on one host:** Limited — brief downtime unless you run multiple instances behind a load balancer manually.
 
-# Test DNS resolution
-docker exec app ping db
+---
 
-# Check database is running
-docker exec db pg_isready
+### Q23: Container can't connect to database
 
-# Check logs
-docker logs db
-docker logs app
+**Scenario:** `ECONNREFUSED` or `getaddrinfo ENOTFOUND db`.
 
-# Verify environment variables
-docker exec app env | grep DB
-```
-
-### Q24: Image build is slow. How do you optimize?
-**Answer:**
-1. Order Dockerfile: least changing → most changing
-2. Use multi-stage builds
-3. Leverage layer caching
-4. Use .dockerignore
-5. Use BuildKit (`DOCKER_BUILDKIT=1`)
-6. Use smaller base images
+**Checklist:**
 
 ```bash
-# Enable BuildKit for faster builds
-DOCKER_BUILDKIT=1 docker build -t myimage .
+# 1. Same network?
+docker network inspect myapp_default
+
+# 2. DB running and healthy?
+docker compose ps
+docker compose exec db pg_isready -U postgres
+
+# 3. DNS works?
+docker compose exec api ping -c 1 db
+docker compose exec api getent hosts db
+
+# 4. Correct env?
+docker compose exec api env | grep -i database
+
+# 5. DB logs
+docker compose logs db
 ```
 
-### Q25: How do you run stateful applications in Docker?
-**Answer:**
-1. Use **named volumes** for data persistence
-2. Use **docker-compose** for consistent setup
-3. Implement proper **backup strategies**
-4. Consider **orchestration** (Swarm/K8s) for HA
+| Symptom | Likely cause |
+|---------|--------------|
+| `ENOTFOUND db` | Wrong network or wrong hostname |
+| `ECONNREFUSED` | DB not ready, wrong port, DB not listening |
+| `password authentication failed` | Wrong credentials — network OK |
+
+**Fix:** `DB_HOST=db` not `localhost`. Add `healthcheck` on db.
+
+---
+
+### Q24: Image build is slow
+
+**Scenario:** CI build takes 12 minutes every commit.
+
+**Optimization checklist:**
+
+```
+□ .dockerignore excludes node_modules, .git
+□ COPY package*.json before COPY . .
+□ Multi-stage — don't copy tests to final stage
+□ DOCKER_BUILDKIT=1
+□ BuildKit cache mounts for npm/pip
+□ Smaller base (alpine)
+□ docker compose build --parallel
+```
+
+```bash
+DOCKER_BUILDKIT=1 docker build -t my-api .
+```
+
+**Measure:** `docker build` with `--progress=plain` — find slowest step.
+
+---
+
+### Q25: Stateful apps in Docker?
+
+**Scenario:** Run production Postgres in Docker — team says containers are ephemeral.
+
+**Core answer:** Containers are ephemeral; **volumes are not**. Stateful = container + named volume + backup strategy.
 
 ```yaml
 services:
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     secrets:
       - db_password
+    restart: unless-stopped
+    # no ports: — internal only
 
 volumes:
   postgres-data:
+
+secrets:
+  db_password:
+    external: true
 ```
 
+**Production considerations:**
+- Named volume or cloud block storage
+- Regular backup (`tar` pattern in [05-Docker-Volumes.md](./05-Docker-Volumes.md))
+- `restart: unless-stopped`
+- Don't use `compose down -v` in prod
+- For HA: managed RDS / Cloud SQL, or K8s StatefulSet + operators
 
+---
 
+## 6. Quick Comparison Tables
+
+### CMD vs ENTRYPOINT vs RUN
+
+| Instruction | When runs | Purpose |
+|-------------|-----------|---------|
+| RUN | Build | Install deps, compile |
+| CMD | Container start | Default command |
+| ENTRYPOINT | Container start | Fixed executable |
+
+### ports vs expose (Compose)
+
+| | `ports` | `expose` |
+|---|---------|----------|
+| Host access | Yes | No |
+| Container-to-container | Yes | Yes |
+
+### docker run vs docker start
+
+| | `docker run` | `docker start` |
+|---|--------------|----------------|
+| Creates | New container | — |
+| Resumes | — | Existing container |
+| New image tag | Yes | No — same container |
+
+### Volume types
+
+| | Named | Bind | tmpfs |
+|---|-------|------|-------|
+| Prod DB | ✓ | ✗ | ✗ |
+| Dev code | ✗ | ✓ | ✗ |
+| Temp secrets | ✗ | ✗ | ✓ |
+
+### Network drivers
+
+| Driver | DNS by name | Multi-host |
+|--------|-------------|------------|
+| Default bridge | ✗ | ✗ |
+| Custom bridge | ✓ | ✗ |
+| Compose default | ✓ | ✗ |
+| Overlay | ✓ | ✓ |
+
+---
+
+## Summary Cheatsheet
+
+**Top 10 interview one-liners (understand, don't memorize):**
+
+1. Image = template; container = running instance with writable layer
+2. `localhost` inside container is itself — use service names
+3. `EXPOSE` documents; `-p` publishes
+4. Named volumes survive `docker rm`; bind mounts for dev code
+5. `depends_on` ≠ ready — use healthchecks
+6. `COPY` deps before source for cache
+7. Multi-stage = small secure production images
+8. Non-root `USER` + scan + no secrets in image
+9. Default bridge has no DNS — use custom network
+10. `compose down -v` deletes your database
+
+**Study path:** Read guides 01–06 → practice scenarios Q21–Q25 on a real machine → use this file for interview review.
+
+---
+
+*Full series: [01-Basics](./01-Docker-Basics.md) · [02-Dockerfile](./02-Dockerfile.md) · [03-Compose](./03-Docker-Compose.md) · [04-Networking](./04-Docker-Networking.md) · [05-Volumes](./05-Docker-Volumes.md) · [06-Security](./06-Docker-Security.md)*
