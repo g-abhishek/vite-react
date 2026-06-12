@@ -3,55 +3,68 @@
 ## Table of Contents
 
 1. [Introduction](#introduction)
+   - [Master Concept Map — What, Why & Where at a Glance](#master-concept-map--what-why--where-at-a-glance)
 2. [Node.js Architecture](#nodejs-architecture)
+   - [What, Why & Where — Node.js Architecture](#what-why--where--nodejs-architecture)
    - Core Components
    - Request Processing Flow (Detailed Trace)
    - Multiple Async Operations Example
 3. [V8 Engine](#v8-engine)
+   - [What, Why & Where — V8 Engine](#what-why--where--v8-engine)
    - Compilation Pipeline (Ignition & TurboFan)
    - Memory Structure
    - Garbage Collection
 4. [libuv - The Heart of Node.js](#libuv---the-heart-of-nodejs)
+   - [What, Why & Where — libuv](#what-why--where--libuv)
    - Thread Pool vs Async I/O
    - Event Loop Phases (Detailed)
    - setTimeout vs setImmediate
    - process.nextTick vs setImmediate vs Promise
 5. [Thread Pool](#thread-pool)
+   - [What, Why & Where — Thread Pool](#what-why--where--thread-pool)
    - Thread Pool Saturation
    - Visualization Example
 6. [Streams](#streams)
+   - [What, Why & Where — Streams](#what-why--where--streams)
    - Stream Types
    - Backpressure
    - Custom Streams
    - Stream Modes (Flowing vs Paused)
    - Practical JSON Processing
 7. [Buffers](#buffers)
+   - [What, Why & Where — Buffers](#what-why--where--buffers)
    - Memory Layout
    - Buffer Pooling
 8. [Module System](#module-system)
+   - [What, Why & Where — Module System](#what-why--where--module-system)
    - CommonJS vs ES Modules
    - Module Resolution
    - Module Caching
    - Circular Dependencies
    - Module Wrapper Function
 9. [Cluster Module](#cluster-module)
+   - [What, Why & Where — Cluster Module](#what-why--where--cluster-module)
    - IPC Communication
    - Production Example
    - Zero-Downtime Deployment
 10. [Worker Threads](#worker-threads)
+    - [What, Why & Where — Worker Threads](#what-why--where--worker-threads)
     - Cluster vs Worker Threads
     - SharedArrayBuffer & Atomics
     - Worker Pool Pattern
     - Data Transfer Methods
     - Image Processing Example
 11. [Memory Management](#memory-management)
+    - [What, Why & Where — Memory Management](#what-why--where--memory-management)
     - Memory Limits
     - Memory Leak Causes
     - Profiling Memory
 12. [Performance Optimization](#performance-optimization)
+    - [What, Why & Where — Performance Optimization](#what-why--where--performance-optimization)
     - Async Best Practices
     - Event Loop Best Practices
 13. [Common Issues and Debugging](#common-issues-and-debugging)
+    - [What, Why & Where — Debugging Node.js Internals](#what-why--where--debugging-nodejs-internals)
     - Event Loop Blocked
     - Memory Leaks
     - Unhandled Rejections
@@ -67,6 +80,46 @@ Node.js is a **JavaScript runtime** built on Chrome's V8 engine. Understanding i
 - Debug complex issues
 - Make better architectural decisions
 - Ace senior-level interviews
+
+> **How this guide teaches:** Every major topic follows the same pattern — **What is it?** (definition + mental model) → **Why does it exist?** (the problem it solves) → **Where is it used?** (concrete APIs and code) → **Mental Model** (one-line summary to remember). Concepts build from zero; no prior Node internals knowledge assumed.
+
+### Master Concept Map — What, Why & Where at a Glance
+
+Every major Node.js internal concept answers three questions. Use this table as your navigation anchor — each section below expands one row in full detail.
+
+| # | Concept | What it is | Why it exists | Where it lives |
+|---|---------|------------|---------------|----------------|
+| 1 | **Node.js Architecture** | Layered runtime: JS → C++ bindings → V8 + libuv → OS | Run JS on the server with non-blocking I/O | `node` binary; `lib/`, `src/`, `deps/` in Node repo |
+| 2 | **V8 Engine** | JS-to-machine-code compiler + heap + garbage collector | Execute JavaScript; manage object memory automatically | `deps/v8/`; `v8` module; inside every `node` process |
+| 3 | **libuv** | Cross-platform event loop + async I/O + thread pool | Unify OS differences; schedule callbacks; fake async for blocking ops | `deps/uv/`; powers `setTimeout`, `fs`, `http` |
+| 4 | **Event Loop** | 6-phase callback scheduler on the main thread | One thread handles thousands of concurrent I/O operations | Timers → Pending → Poll → Check → Close; between phases: nextTick + microtasks |
+| 5 | **Thread Pool** | 4 default background threads for blocking work | Keep main thread free when OS has no async API (files, crypto) | `UV_THREADPOOL_SIZE`; `deps/uv/src/threadpool.c` |
+| 6 | **Streams** | Chunked data processing (Readable/Writable/Duplex/Transform) | Process unlimited data with fixed memory; backpressure control | `stream` module; `fs`, `http`, `zlib`, `crypto` |
+| 7 | **Buffers** | Fixed-length raw byte sequences outside V8 heap | Binary I/O (files, sockets, hashes) without corrupting data | Global `Buffer`; used by `fs`, `net`, `crypto` |
+| 8 | **Module System** | CJS (`require`) and ESM (`import`) code organization | Encapsulation, dependency management, singleton caching | `lib/internal/modules/`; your `.js`/`.mjs`/`.cjs` files |
+| 9 | **Cluster** | Multi-process scaling with shared TCP port | Use all CPU cores for I/O-bound HTTP servers | `cluster` module; built on `child_process.fork` |
+| 10 | **Worker Threads** | Parallel JS threads in one process | CPU-intensive work without blocking the event loop | `worker_threads` module; `piscina`, `sharp` |
+| 11 | **Memory Management** | V8 heap generations + RSS/external/native memory | Automatic GC with tunable limits; leak diagnosis | `process.memoryUsage()`; `--max-old-space-size`; heap snapshots |
+| 12 | **Performance** | Aligning code with event loop + pool architecture | Prevent blocking, saturation, and unbounded memory | Request handlers, streams, worker pools, profiling flags |
+| 13 | **Debugging** | Subsystem-targeted diagnosis (loop, heap, handles) | Node errors are deferred and architectural, not line-level | `--inspect`, `--prof`, `clinic.js`, APM event loop lag |
+
+**How the pieces connect:**
+
+```
+HTTP Request arrives
+       │
+       ▼
+libuv Poll phase (OS epoll/kqueue notified socket has data)
+       │
+       ▼
+V8 executes your route handler (main thread)
+       │
+       ├── fs.readFile() ──► libuv thread pool ──► callback queued ──► Poll phase
+       ├── crypto.pbkdf2() ──► libuv thread pool ──► same path
+       ├── fetch() / http.get() ──► OS async socket (no thread pool)
+       ├── JSON.parse(huge) ──► BLOCKS main thread ⚠️ → use worker_threads
+       └── res.pipe(stream) ──► Streams with backpressure (constant memory)
+```
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -100,6 +153,185 @@ Node.js is a **JavaScript runtime** built on Chrome's V8 engine. Understanding i
 ---
 
 ## Node.js Architecture
+
+### 1. What is Node.js?
+
+Node.js is **not** a programming language. It is **not** a framework like Express.
+
+It is a **JavaScript runtime** — a program that lets you run JavaScript **outside the browser**, on your server or laptop.
+
+When you type:
+
+```bash
+node app.js
+```
+
+Node does three things:
+
+1. Reads your `app.js` file
+2. Passes it to the **V8 engine** (same engine Chrome uses)
+3. Gives your code access to the **operating system** — files, network, processes
+
+Think of it as:
+
+```
+JavaScript (language)  +  Node.js (runtime)  =  Server-side programs
+```
+
+---
+
+### 2. Why does Node.js exist?
+
+JavaScript in a **browser** can:
+
+- Change the DOM
+- Fetch APIs
+- Handle clicks
+
+JavaScript in a **browser** cannot:
+
+- Read `C:\Users\file.txt`
+- Listen on port 3000
+- Spawn child processes
+
+Ryan Dahl created Node.js (2009) to answer: *"What if JavaScript could do server things?"*
+
+The breakthrough was **non-blocking I/O**. Traditional servers (Apache, early PHP) used **one thread per request**:
+
+```
+1000 users  →  1000 threads  →  huge memory, context-switching overhead
+```
+
+Node uses **one thread** + an **event loop**:
+
+```
+1000 users  →  1 thread  →  delegate slow work, resume when done
+```
+
+Without this architecture, every `fs.readFile` or database query would **freeze the entire server** until it finished.
+
+---
+
+### 3. Where does Node.js live?
+
+On your machine, everything is bundled inside one binary:
+
+```bash
+which node
+# /usr/local/bin/node
+```
+
+Inside that binary (and the Node.js source repo):
+
+| Layer | What | Source location |
+|-------|------|-----------------|
+| Your code | `app.js`, `server.js` | Your project |
+| Built-in modules | `fs`, `http`, `path` | `lib/fs.js`, `lib/http.js` |
+| C++ bindings | Bridge JS ↔ system | `src/node_file.cc`, `src/node_http.cc` |
+| V8 | Execute JS, manage memory | `deps/v8/` |
+| libuv | Event loop, thread pool | `deps/uv/` |
+| OS | Files, sockets, processes | Linux / macOS / Windows |
+
+**The call stack when you run `fs.readFile`:**
+
+```
+Your JS: fs.readFile('file.txt', callback)
+    ↓
+lib/fs.js (validates arguments)
+    ↓
+C++ binding (node_file.cc — unwraps JS types)
+    ↓
+libuv (uv_fs_read — thread pool or async)
+    ↓
+Operating System (read() syscall)
+    ↓
+Callback queued → Event loop → your callback runs
+```
+
+---
+
+### 4. The four core components
+
+Node.js is built from four layers. Understand these and you understand Node.
+
+**Layer 1 — V8 Engine**
+
+- Compiles JavaScript to machine code
+- Allocates objects on the heap
+- Runs garbage collection
+- **Where:** inside every `node` process; you touch it via `v8` module
+
+**Layer 2 — libuv**
+
+- Runs the event loop (schedules callbacks)
+- Wraps OS async I/O (epoll, kqueue, IOCP)
+- Manages the thread pool (4 threads default)
+- **Where:** `deps/uv/`; you use it via `setTimeout`, `fs`, `http`
+
+**Layer 3 — C++ Bindings**
+
+- Connect V8 to libuv
+- Expose `fs`, `http`, `crypto` to JavaScript
+- **Where:** `src/*.cc` in Node repo
+
+**Layer 4 — Core JavaScript Modules**
+
+- User-friendly APIs written in JS
+- `require('fs')`, `require('http')`
+- **Where:** `lib/` folder in Node repo
+
+```
+Your JavaScript Code
+        │
+        ▼
+Built-in Modules (lib/fs.js, lib/http.js)
+        │
+        ▼
+C++ Bindings (src/node_file.cc)
+        │
+        ├──► V8 (execute JS, manage heap)
+        └──► libuv (event loop, thread pool)
+                    │
+                    ▼
+             Operating System
+```
+
+---
+
+### 5. Mental Model — The Restaurant
+
+Node.js is a **restaurant with one waiter** (the main thread / event loop).
+
+```
+Customer (request) arrives
+    ↓
+Waiter takes order (your JS runs)
+    ↓
+Waiter sends order to kitchen (libuv / OS) — does NOT stand and wait
+    ↓
+Waiter serves other tables (handles other requests)
+    ↓
+Kitchen rings bell (I/O complete)
+    ↓
+Waiter delivers food (callback runs)
+```
+
+The waiter **never blocks** at the stove. If they did, every customer in the restaurant would wait.
+
+**Bad (blocking):**
+
+```javascript
+const data = fs.readFileSync('huge.txt');  // waiter frozen at stove
+```
+
+**Good (non-blocking):**
+
+```javascript
+fs.readFile('huge.txt', (err, data) => { /* deliver when ready */ });
+// waiter free to handle other requests immediately
+```
+
+---
 
 ### Core Components
 
@@ -332,7 +564,93 @@ log('2. All async operations initiated');
 
 ## V8 Engine
 
-### What is V8?
+### 1. What is V8?
+
+**V8** is Google's **JavaScript engine** — the program inside Node.js (and Chrome) that actually **runs** your JavaScript.
+
+Your CPU does not understand JavaScript. It only understands **machine code** — raw binary instructions.
+
+```
+Your code:  const sum = (a, b) => a + b;
+                    ↓
+V8's job:   Translate this into machine code the CPU can execute
+```
+
+V8 is written in **C++**. It is bundled inside every `node` binary. You never install it separately.
+
+**Where it lives:** `deps/v8/` in the Node source repo. Also powers Chrome, Electron, Deno. You touch it via the `v8` module or flags like `--max-old-space-size`.
+
+---
+
+### 2. Why does V8 exist?
+
+**Problem 1 — Translation:** JavaScript is high-level. CPUs need machine code. V8 compiles JS → machine instructions.
+
+**Problem 2 — Speed:** Pure interpretation is too slow. V8 uses **JIT (Just-In-Time) compilation**:
+
+```
+First run:   slow (interpreted bytecode via Ignition)
+100th run:   fast (optimized machine code via TurboFan)
+```
+
+**Problem 3 — Memory:** Every `const obj = {}` allocates memory. V8's **garbage collector** automatically frees unreachable objects. Without GC, you'd manage memory manually — error-prone in JS.
+
+---
+
+### 3. How V8 runs your code — the compilation pipeline
+
+**Step 1 — Parser:** tokenizes your code, builds an **AST (Abstract Syntax Tree)**.
+
+**Step 2 — Ignition:** converts AST → **bytecode**, executes immediately. Fast startup. Collects type feedback.
+
+**Step 3 — TurboFan:** hot functions get compiled to **optimized machine code** — inlining, dead code elimination.
+
+```
+JavaScript  →  Parser  →  Ignition (bytecode)  →  TurboFan (machine code)
+                              ↑ fast start              ↑ hot path speed
+```
+
+**Deoptimization:** if V8 assumed `x` is always a number but you pass a string, optimized code is discarded and Ignition takes over.
+
+---
+
+### 4. Where does V8 store data? — Heap vs Stack
+
+**Stack** — function frames, primitives. Fixed size. Popped automatically when function returns.
+
+**Heap** — objects, arrays, closures. Large. Managed by garbage collection.
+
+```javascript
+const user = { name: 'John' };  // allocated on HEAP
+let count = 0;                   // primitive on STACK (or heap-boxed if in closure)
+```
+
+**Young Generation (New Space):** new objects. Scavenger GC — fast (1–2 ms), frequent.
+
+**Old Generation:** survivors promoted here. Mark-Sweep-Compact GC — slow (10–100+ ms), rare.
+
+```bash
+node --max-old-space-size=4096 app.js   # raise heap to 4 GB
+```
+
+```javascript
+const v8 = require('v8');
+v8.writeHeapSnapshot('heap.heapsnapshot');  // analyze in Chrome DevTools
+```
+
+---
+
+### Mental Model
+
+```
+V8 = runs JS, allocates objects, frees garbage
+libuv = schedules callbacks, talks to OS
+Node C++ layer = connects them
+
+V8 does NOT know about files or sockets.
+```
+
+### Compilation Pipeline (Reference Diagram)
 
 V8 is Google's open-source JavaScript engine, written in C++. It compiles JavaScript directly to native machine code.
 
@@ -507,7 +825,124 @@ b = null;  // Both are garbage (V8's mark-sweep handles this)
 
 ## libuv - The Heart of Node.js
 
-### What is libuv?
+### 1. What is libuv?
+
+**libuv** is a C library — the **heart of Node.js's async model**.
+
+It provides three things:
+
+1. **Event loop** — decides *when* your callbacks run
+2. **Async I/O** — talks to the OS without blocking the main thread
+3. **Thread pool** — runs blocking work on background threads
+
+You never write `require('libuv')`. You use it indirectly through `setTimeout`, `fs.readFile`, `http.createServer`, `setImmediate`, and `process.nextTick`.
+
+**Where it lives:** `deps/uv/` in the Node repo. Docs: [libuv.org](https://libuv.org/).
+
+---
+
+### 2. Why does libuv exist?
+
+**Problem 1 — Different OS, different APIs:**
+
+| OS | Async mechanism |
+|----|-----------------|
+| Linux | `epoll` |
+| macOS | `kqueue` |
+| Windows | `IOCP` |
+
+libuv **wraps all three** so Node code works identically everywhere.
+
+**Problem 2 — Some operations have no async API:**
+
+Reading a file with `read()` is **blocking** — the thread waits until the disk responds. On Windows, there is no native async file API.
+
+libuv's solution: run blocking work on a **thread pool**, queue the callback when done. Your main thread stays free.
+
+```
+Main thread:  "read file.txt" → hand to thread pool → continue other work
+Thread pool:  actually calls read() → blocks HERE (not on main thread)
+Main thread:  callback fires when thread pool finishes
+```
+
+---
+
+### 3. What is the Event Loop?
+
+The event loop is a **while(true) loop** that processes callbacks in phases:
+
+```
+   ┌─────────────────────────────────────────┐
+   │  1. TIMERS     setTimeout, setInterval  │
+   │  2. PENDING    deferred I/O callbacks   │
+   │  3. IDLE       internal use only      │
+   │  4. POLL       fs callbacks, network    │  ← most time spent here
+   │  5. CHECK      setImmediate             │
+   │  6. CLOSE      socket.on('close')       │
+   │         └── loop back to TIMERS         │
+   └─────────────────────────────────────────┘
+
+   Between EVERY phase:
+   process.nextTick()  →  then  Promise.then()
+```
+
+**Concrete example — what runs when:**
+
+```javascript
+console.log('1 sync');
+
+setTimeout(() => console.log('4 timer'), 0);
+Promise.resolve().then(() => console.log('3 promise'));
+process.nextTick(() => console.log('2 nextTick'));
+
+console.log('1.5 sync');
+
+// Output: 1 sync → 1.5 sync → 2 nextTick → 3 promise → 4 timer
+```
+
+**Priority (highest to lowest):**
+
+1. Synchronous code
+2. `process.nextTick`
+3. `Promise.then` / microtasks
+4. `setTimeout` / `setInterval` (Timers phase)
+5. I/O callbacks (Poll phase)
+6. `setImmediate` (Check phase)
+
+---
+
+### 4. Where does libuv show up in your code?
+
+| You write | libuv does |
+|-----------|------------|
+| `setTimeout(fn, 1000)` | Schedules timer, fires in Timers phase |
+| `fs.readFile(path, cb)` | Submits to thread pool, callback in Poll phase |
+| `http.createServer(...)` | Registers socket with OS async (epoll/kqueue) |
+| `setImmediate(fn)` | Queues for Check phase (right after Poll) |
+| `process.nextTick(fn)` | Runs before event loop continues (highest priority) |
+
+**Thread pool vs OS async:**
+
+| Uses thread pool | Uses OS async (no extra threads) |
+|------------------|----------------------------------|
+| `fs.readFile`, `fs.writeFile` | `http.get`, `net.connect` |
+| `crypto.pbkdf2` | `dns.resolve` |
+| `dns.lookup` | TCP/UDP sockets |
+| `zlib.gzip` | |
+
+---
+
+### Mental Model
+
+```
+libuv = Node's scheduler + I/O manager
+
+Event loop  →  WHEN does my callback run?
+Thread pool →  WHERE does blocking work happen?
+OS async    →  HOW does network I/O work without threads?
+```
+
+### libuv Overview (Reference Diagram)
 
 **libuv** is a C library that provides:
 - Event loop
@@ -909,6 +1344,104 @@ console.log('1.5 End');
 
 ## Thread Pool
 
+### 1. What is the Thread Pool?
+
+The thread pool is a set of **4 background worker threads** (by default) managed by libuv.
+
+When you call:
+
+```javascript
+fs.readFile('big.txt', callback);
+```
+
+Here is what actually happens:
+
+```
+Main thread (event loop):
+  1. Receives your fs.readFile call
+  2. Puts "read big.txt" into a work queue
+  3. Immediately continues — handles other requests
+
+Worker thread (thread pool):
+  4. Picks up the task from queue
+  5. Calls read() — BLOCKS here (but NOT on main thread)
+  6. Signals "done" when file is read
+
+Main thread (event loop):
+  7. Callback queued → runs in Poll phase
+```
+
+Think of it as **4 kitchen helpers** — the waiter (main thread) never cooks, just passes orders.
+
+**Where it lives:** `deps/uv/src/threadpool.c`. Configured with `UV_THREADPOOL_SIZE=8 node app.js` (must be set **before** Node starts).
+
+---
+
+### 2. Why does the Thread Pool exist?
+
+The main thread runs **all JavaScript**. If it blocks for 500 ms reading a file:
+
+```
+User A's request  →  blocked
+User B's request  →  blocked
+User C's request  →  blocked
+All timers        →  frozen
+All WebSockets    →  frozen
+```
+
+The thread pool moves blocking work **off** the main thread while keeping the async callback API you know.
+
+**Why only 4 threads?** Trade-off: more threads = more parallel blocking I/O, but also more memory and context-switching. 4 is libuv's default; tune with `UV_THREADPOOL_SIZE`.
+
+---
+
+### 3. Thread Pool Saturation — the hidden bottleneck
+
+```
+Work Queue: [crypto1, crypto2, crypto3, crypto4, fs.readFile, crypto5]
+              ↓         ↓         ↓         ↓
+           Thread1  Thread2  Thread3  Thread4   ← all busy!
+
+fs.readFile and crypto5 must WAIT in queue
+```
+
+Symptom: server feels slow even though CPU isn't at 100% and event loop isn't "blocked."
+
+**Fix:**
+
+```bash
+UV_THREADPOOL_SIZE=16 node app.js
+```
+
+Or offload heavy crypto to `worker_threads` (separate from libuv's pool).
+
+---
+
+### 4. What uses the thread pool vs OS async?
+
+| Operation | Thread pool? | Why |
+|-----------|--------------|-----|
+| `fs.readFile` | Yes | `read()` syscall blocks |
+| `crypto.pbkdf2` | Yes | CPU-intensive hashing |
+| `dns.lookup` | Yes | `getaddrinfo` blocks |
+| `zlib.gzip` | Yes | Compression is CPU work |
+| `https.get` | **No** | OS epoll/kqueue handles sockets |
+| `dns.resolve` | **No** | Sends UDP over network (async) |
+
+**Rule of thumb:** files + crypto + blocking DNS → thread pool. Network sockets → OS async.
+
+---
+
+### Mental Model
+
+```
+Main thread     = waiter (never blocks on I/O)
+Thread pool     = kitchen staff (4 cooks by default)
+Work queue      = order tickets waiting for a free cook
+
+Saturation = all 4 cooks busy, new orders wait
+```
+
 ### Thread Pool Deep Dive
 
 ```
@@ -986,6 +1519,123 @@ https.get('https://google.com', (res) => {
 ---
 
 ## Streams
+
+### 1. What is a Stream?
+
+A **stream** is data that arrives **piece by piece** instead of all at once.
+
+Imagine downloading a movie:
+
+```
+Without streams:
+  Wait... wait... wait...  [entire 2 GB loads]  →  play
+
+With streams:
+  [chunk 1] → play immediately
+  [chunk 2] → append
+  [chunk 3] → append
+  ...
+```
+
+In Node, a stream is an **EventEmitter** that emits `'data'` events with chunks (usually Buffers).
+
+**Where it lives:** `require('stream')`. Used by `fs.createReadStream`, `http` request/response, `zlib`, `crypto`, `process.stdin`.
+
+---
+
+### 2. Why do Streams exist?
+
+**Problem — memory:**
+
+```javascript
+// ❌ Loads ENTIRE 2 GB file into RAM
+const data = fs.readFileSync('movie.mp4');
+res.end(data);
+```
+
+On a server handling 100 concurrent downloads: 100 × 2 GB = **200 GB RAM** → crash.
+
+```javascript
+// ✅ Sends 64 KB at a time — constant ~64 KB memory per download
+fs.createReadStream('movie.mp4').pipe(res);
+```
+
+**Problem — time to first byte:**
+
+With `readFile`, the client waits until the entire file is read from disk. With streams, the client receives the first chunk **immediately**.
+
+---
+
+### 3. The four stream types
+
+| Type | What | Example | Analogy |
+|------|------|---------|---------|
+| **Readable** | Source — you read from it | `fs.createReadStream`, `req` (HTTP) | Water tap |
+| **Writable** | Destination — you write to it | `fs.createWriteStream`, `res` (HTTP) | Drain |
+| **Duplex** | Both read and write | `net.Socket` | Phone call (both sides talk) |
+| **Transform** | Read + modify + write | `zlib.createGzip()` | Water filter |
+
+**Connecting streams:**
+
+```javascript
+readable.pipe(writable);
+// readable → writable (auto-handles backpressure)
+```
+
+---
+
+### 4. What is Backpressure?
+
+Backpressure happens when the **producer is faster than the consumer**.
+
+```
+Disk reads at 500 MB/s
+Network sends at 10 MB/s
+
+Without backpressure:
+  Chunks pile up in memory → RAM grows → crash 💥
+
+With backpressure (.pipe()):
+  Writable says "I'm full" → Readable pauses → waits for 'drain' → resumes
+```
+
+Manual handling:
+
+```javascript
+readable.on('data', (chunk) => {
+  const ok = writable.write(chunk);
+  if (!ok) {
+    readable.pause();
+    writable.once('drain', () => readable.resume());
+  }
+});
+```
+
+`.pipe()` does this automatically.
+
+---
+
+### 5. Where are Streams used?
+
+| Scenario | Code |
+|----------|------|
+| File server | `fs.createReadStream('file').pipe(res)` |
+| Gzip response | `fs.createReadStream('file').pipe(zlib.createGzip()).pipe(res)` |
+| Upload handling | `req.on('data', chunk => ...)` — chunk is a Buffer |
+| Log processing | `fs.createReadStream('10gb.log').pipe(lineParser)` |
+| Modern pipeline | `await pipeline(readable, transform, writable)` |
+
+---
+
+### Mental Model
+
+```
+readFile  = drink entire lake at once
+stream    = drink from a hose, one gulp at a time
+
+Buffer  = one gulp (chunk of bytes)
+Stream  = the hose (continuous flow of chunks)
+```
 
 ### What are Streams?
 
@@ -1421,86 +2071,521 @@ fs.createReadStream('huge-data.ndjson')
 
 ## Buffers
 
-### What are Buffers?
+### 1. What is a Buffer?
 
-**Buffers** are fixed-length sequences of bytes. They represent binary data in memory.
+A **Buffer** is a temporary block of memory used to store **raw binary data**.
+
+Think of it as a row of boxes in RAM — each box holds one byte (a number from 0 to 255):
+
+```
+Memory
++----+----+----+----+----+
+| 72 |101 |108 |108 |111 |
++----+----+----+----+----+
+```
+
+Each box is **1 byte**.
+
+When you write:
 
 ```javascript
-// Creating buffers
-const buf1 = Buffer.alloc(10);              // 10 bytes, filled with zeros
-const buf2 = Buffer.allocUnsafe(10);        // 10 bytes, uninitialized (faster)
-const buf3 = Buffer.from('Hello');          // From string
-const buf4 = Buffer.from([1, 2, 3]);        // From array
-const buf5 = Buffer.from('Hello', 'utf8');  // With encoding
-
-// Buffer operations
-console.log(buf3.toString());         // 'Hello'
-console.log(buf3.toString('hex'));    // '48656c6c6f'
-console.log(buf3.toString('base64')); // 'SGVsbG8='
-
-console.log(buf3.length);             // 5 (bytes, not characters!)
-console.log(buf3[0]);                 // 72 (ASCII code for 'H')
-
-// Buffer is a view into memory
-buf3[0] = 74;  // Change 'H' to 'J'
-console.log(buf3.toString());  // 'Jello'
+const buf = Buffer.from('Hello');
 ```
 
+Node stores this in memory:
+
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    BUFFER MEMORY LAYOUT                              │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│   const buf = Buffer.from('Hello');                                 │
-│                                                                      │
-│   Memory:                                                            │
-│   ┌─────┬─────┬─────┬─────┬─────┐                                   │
-│   │  72 │ 101 │ 108 │ 108 │ 111 │                                   │
-│   │ 'H' │ 'e' │ 'l' │ 'l' │ 'o' │                                   │
-│   └──┬──┴──┬──┴──┬──┴──┬──┴──┬──┘                                   │
-│      0     1     2     3     4    ← Index                           │
-│                                                                      │
-│   buf.length = 5 bytes                                              │
-│   buf[0] = 72                                                       │
-│   buf.toString() = 'Hello'                                          │
-│                                                                      │
-│   ─────────────────────────────────────────────────────────────────  │
-│                                                                      │
-│   Unicode example:                                                   │
-│   const buf = Buffer.from('你好');                                   │
-│                                                                      │
-│   Memory (UTF-8 encoding):                                          │
-│   ┌─────┬─────┬─────┬─────┬─────┬─────┐                             │
-│   │ 228 │ 189 │ 160 │ 229 │ 165 │ 189 │                             │
-│   │     '你'        │     '好'        │                             │
-│   └─────┴─────┴─────┴─────┴─────┴─────┘                             │
-│                                                                      │
-│   buf.length = 6 (bytes, not characters!)                           │
-│   '你好'.length = 2 (characters)                                     │
-│                                                                      │
-└─────────────────────────────────────────────────────────────────────┘
+H = 72
+e = 101
+l = 108
+l = 108
+o = 111
 ```
 
-### Buffer Pooling
+A Buffer is basically a **wrapper around this raw memory** — it gives JavaScript a way to read and write individual bytes efficiently.
+
+---
+
+### 2. Why do Buffers exist?
+
+JavaScript was originally designed for **browsers**. It only had:
+
+- Number
+- String
+- Object
+- Array
+
+But servers deal with things that are **not text**:
+
+- Files
+- Images
+- Videos
+- Network packets
+- TCP streams
+- HTTP request bodies
+
+These are just **bytes**.
+
+A PNG image does not look like `"Hello World"`. It looks like:
+
+```
+89 50 4E 47 0D 0A 1A 0A ...
+```
+
+JavaScript **strings** are not suitable for handling raw bytes efficiently — they are immutable, UTF-16 encoded, and count characters differently than bytes. So Node.js introduced **Buffer** to work directly with binary data.
+
+**Where it lives:** `Buffer` is **global** in Node (no `require` needed). It is a subclass of `Uint8Array`. Used internally by `fs`, `net`, `http`, `crypto`, and `zlib`.
+
+---
+
+### 3. Where are Buffers used?
+
+Almost everywhere in Node that touches the outside world.
+
+**Reading a file:**
 
 ```javascript
-// Node.js maintains a pool of pre-allocated memory for small buffers
-// This is for performance - avoids many small allocations
+fs.readFile('image.png', (err, data) => {
+  console.log(data);
+});
+// Output: <Buffer 89 50 4e 47 ...>
+```
 
-// Buffer.allocUnsafe uses pooling for buffers < 4KB
-const poolSize = Buffer.poolSize;  // 8192 bytes (8KB)
+The image is loaded into a Buffer.
 
-// These share pool memory:
-const buf1 = Buffer.allocUnsafe(100);  // From pool
-const buf2 = Buffer.allocUnsafe(100);  // From pool
+**Receiving network data:**
 
-// This gets its own allocation:
-const buf3 = Buffer.allocUnsafe(10000);  // Too big for pool
+```
+Browser  ----Request---->  Server
+```
+
+The server receives bytes from the socket. Node stores them in a Buffer.
+
+**Streams:**
+
+```javascript
+req.on('data', chunk => {
+  console.log(chunk);  // chunk is a Buffer
+});
+```
+
+**Crypto / databases:** hashes, encrypted payloads, and binary protocol packets all flow through Buffers.
+
+---
+
+### 4. Why not just use Strings?
+
+Suppose we receive: `"😊"`
+
+Looks like **1 character**. But in UTF-8 it is actually **4 bytes**:
+
+```
+F0 9F 98 8A
+```
+
+```javascript
+"😊".length              // 2  ← JS counts UTF-16 code units, not bytes!
+Buffer.from("😊").length   // 4  ← actual bytes — what the network cares about
+```
+
+For networking and files, **bytes matter — not characters**.
+
+Same with Chinese:
+
+```javascript
+'你好'.length              // 2 characters
+Buffer.from('你好').length   // 6 bytes (UTF-8)
 ```
 
 ---
 
+### 5. What exactly is a Byte?
+
+A **byte** = **8 bits**. A bit is either `0` or `1`.
+
+Example:
+
+```
+01001000  →  decimal 72  →  ASCII 'H'
+```
+
+ASCII table (subset):
+
+| Character | Byte value |
+|-----------|------------|
+| H | 72 |
+| e | 101 |
+| l | 108 |
+| o | 111 |
+
+Buffer stores these **numeric byte values**, not the characters themselves.
+
+---
+
+### 6. What does a Buffer look like internally?
+
+```javascript
+const buf = Buffer.from('Hello');
+```
+
+Memory layout:
+
+```
+Address    Value
+0x1000      72    ('H')
+0x1001      101   ('e')
+0x1002      108   ('l')
+0x1003      108   ('l')
+0x1004      111   ('o')
+```
+
+You access it by index:
+
+```javascript
+console.log(buf[0]);  // 72
+```
+
+---
+
+### 7. Buffer is similar to an Array
+
+```javascript
+const buf = Buffer.from('Hello');
+console.log(buf);
+// <Buffer 48 65 6c 6c 6f>  ← hex display in console
+
+console.log(buf[0]);  // 72 (decimal) — same as [72, 101, 108, 108, 111]
+```
+
+Like `const arr = [72, 101, 108, 108, 111]` — but Buffer is **much more efficient** because it directly represents bytes in memory outside the normal V8 string heap.
+
+---
+
+### 8. Why is it called a "Buffer"?
+
+In computer science, a **buffer** is a temporary holding area while data moves from one place to another:
+
+```
+Disk  →  Buffer  →  Application
+Network  →  Buffer  →  Server
+```
+
+Data arrives **chunk by chunk** and sits temporarily in memory. That memory area is called a Buffer.
+
+---
+
+### 9. Buffer vs Memory
+
+People often confuse these.
+
+| Term | Meaning |
+|------|---------|
+| **Memory (RAM)** | Entire RAM of the machine (e.g. 16 GB) |
+| **Buffer** | A small **allocated portion** of that RAM (e.g. 10 bytes) |
+
+```
+RAM (16 GB)
++--------------------------------+
+|                                |
+|   Buffer (10 bytes)  ← tiny   |
+|                                |
++--------------------------------+
+```
+
+---
+
+### 10. Creating Buffers — `Buffer.alloc()`
+
+```javascript
+const buf1 = Buffer.alloc(10);
+```
+
+Meaning: **"Give me 10 bytes of memory, cleared to zero."**
+
+```
+Memory:  0  0  0  0  0  0  0  0  0  0
+Output:  <Buffer 00 00 00 00 00 00 00 00 00 00>
+```
+
+**Why zeros?** Imagine reused memory still held `password=secret123` from a previous allocation. Without clearing, another program could read old data. `alloc` is **safe** — use it for crypto keys and sensitive data.
+
+---
+
+### 11. Creating Buffers — `Buffer.allocUnsafe()`
+
+```javascript
+const buf2 = Buffer.allocUnsafe(10);
+```
+
+Memory: `? ? ? ? ? ? ? ? ? ?` — Node does **NOT** initialize.
+
+Output may look like: `<Buffer 68 2f 10 aa 3d ...>` — random leftover bytes.
+
+**Why use it?** Performance. Node skips zero-filling. Use when you know you'll overwrite every byte:
+
+```javascript
+const buf = Buffer.allocUnsafe(1000);
+for (let i = 0; i < 1000; i++) {
+  buf[i] = i;
+}
+```
+
+---
+
+### 12. Creating Buffers — `Buffer.from(String)`
+
+```javascript
+const buf3 = Buffer.from('Hello');
+// H→72  e→101  l→108  l→108  o→111
+// Stored as: [72, 101, 108, 108, 111]
+```
+
+With explicit encoding:
+
+```javascript
+Buffer.from('Hello', 'utf8');
+```
+
+**Encoding** = how characters are converted into bytes. Different encodings, different byte counts:
+
+| Input | Encoding | Bytes |
+|-------|----------|-------|
+| `'A'` | UTF-8 | `65` (1 byte) |
+| `'😊'` | UTF-8 | `F0 9F 98 8A` (4 bytes) |
+
+---
+
+### 13. Creating Buffers — `Buffer.from(Array)`
+
+```javascript
+const buf4 = Buffer.from([1, 2, 3]);
+// Byte 0 = 1,  Byte 1 = 2,  Byte 2 = 3
+// Output: <Buffer 01 02 03>
+```
+
+---
+
+### 14. Converting back — `toString()`
+
+```javascript
+const buf3 = Buffer.from('Hello');
+
+buf3.toString();        // 'Hello'     ← default UTF-8
+buf3.toString('hex');   // '48656c6c6f'
+buf3.toString('base64'); // 'SGVsbG8='
+```
+
+**Hex** — each byte shown as two hex digits (base-16: `0-9`, `A-F`). Used heavily in networking and debugging:
+
+```
+72 → 48    101 → 65    108 → 6c    111 → 6f
+```
+
+**Base64** — converts binary into text-safe characters. Used in JWT tokens, images in HTML, email attachments:
+
+```html
+<img src="data:image/png;base64,.....">
+```
+
+---
+
+### 15. `length` — bytes, not characters
+
+```javascript
+Buffer.from('Hello').length   // 5
+Buffer.from('😊').length      // 4
+```
+
+`buf.length` is always the number of **bytes**, never characters.
+
+---
+
+### 16. Mutability — Buffers vs Strings
+
+**Strings are immutable:**
+
+```javascript
+let str = 'Hello';
+str[0] = 'J';
+console.log(str);  // Still 'Hello' — change ignored
+```
+
+**Buffers are mutable:**
+
+```javascript
+const buf = Buffer.from('Hello');
+buf[0] = 74;  // 74 = 'J'
+console.log(buf.toString());  // 'Jello'
+```
+
+Memory becomes: `[74, 101, 108, 108, 111]`
+
+---
+
+### 17. Buffer Pooling (advanced)
+
+Node maintains a pool of pre-allocated memory for **small** buffers (< 4 KB) to avoid thousands of tiny `malloc` calls:
+
+```javascript
+const poolSize = Buffer.poolSize;  // 8192 bytes (8 KB)
+
+const buf1 = Buffer.allocUnsafe(100);   // drawn from pool
+const buf2 = Buffer.allocUnsafe(100);   // drawn from pool
+const buf3 = Buffer.allocUnsafe(10000); // too big — own allocation
+```
+
+Use `allocUnsafe` only when you will overwrite every byte, or when speed matters and stale data is not a security risk.
+
+---
+
+### Mental Model
+
+```
+String   →  Human-readable text
+Buffer   →  Raw bytes in memory
+File     →  Bytes on disk
+Network  →  Bytes over the wire
+
+Buffer is the bridge:
+
+Text  <-->  Bytes  <-->  Files / Network
+```
+
+Nearly every low-level Node.js API (`fs`, streams, TCP, HTTP, crypto, compression) uses Buffers. Once you understand Buffers as **"a chunk of memory holding bytes"**, everything else in Node's I/O model becomes much easier to understand.
+
+---
+
 ## Module System
+
+### 1. What is the Module System?
+
+Modules let you split code into **separate files** with explicit imports and exports.
+
+Without modules:
+
+```javascript
+// everything.js — 10,000 lines, global variables collide
+var db = connect();
+var db = connect();  // oops, overwrote!
+```
+
+With modules:
+
+```javascript
+// db.js
+module.exports = connect();
+
+// app.js
+const db = require('./db');  // clear, isolated, no collisions
+```
+
+Node supports two systems:
+
+| System | Syntax | Default? |
+|--------|--------|----------|
+| **CommonJS (CJS)** | `require()` / `module.exports` | Yes (`.js` files) |
+| **ES Modules (ESM)** | `import` / `export` | With `"type": "module"` or `.mjs` |
+
+**Where it lives:** `lib/internal/modules/cjs/loader.js` (CJS), `lib/internal/modules/esm/` (ESM).
+
+---
+
+### 2. Why does the Module System exist?
+
+**Problem 1 — Namespace pollution:** globals in one file leak into all others.
+
+**Problem 2 — Dependency clarity:** which file needs which? Modules make dependencies explicit.
+
+**Problem 3 — Singleton behavior:** a database connection module should connect **once**, not on every import. Node's **module cache** guarantees this:
+
+```javascript
+const db1 = require('./db');
+const db2 = require('./db');
+console.log(db1 === db2);  // true — same object!
+```
+
+The top-level code in `db.js` runs **exactly once**.
+
+---
+
+### 3. How does `require()` work? — step by step
+
+When you write `const math = require('./math')`:
+
+**Step 1 — Resolve the path:**
+
+```
+require('fs')        → built-in core module
+require('./math')    → ./math.js → ./math.json → ./math/index.js
+require('lodash')    → ./node_modules/lodash → ../node_modules/lodash → ...
+```
+
+**Step 2 — Check cache:**
+
+```javascript
+if (require.cache[absolutePath]) {
+  return require.cache[absolutePath].exports;  // skip re-execution!
+}
+```
+
+**Step 3 — Wrap your file in a function:**
+
+```javascript
+// Your math.js:
+const PI = 3.14;
+module.exports = { PI };
+
+// What Node actually runs:
+(function(exports, require, module, __filename, __dirname) {
+  const PI = 3.14;
+  module.exports = { PI };
+});
+```
+
+This gives you **private scope** — `PI` is not global.
+
+**Step 4 — Execute, cache, return `module.exports`.**
+
+---
+
+### 4. CommonJS vs ES Modules — when to use which
+
+| Feature | CommonJS | ES Modules |
+|---------|----------|------------|
+| Loading | Synchronous | Asynchronous |
+| `require(variable)` | Yes | No (static imports only) |
+| Top-level `await` | No | Yes |
+| Tree shaking | No | Yes |
+| File extension | `.js`, `.cjs` | `.mjs` or `"type":"module"` |
+
+**Interop rule:** CJS cannot `require()` an ESM file. Use `await import('./esm.mjs')` instead.
+
+---
+
+### 5. Circular Dependencies — the gotcha
+
+```javascript
+// a.js
+exports.loaded = false;
+const b = require('./b');  // b runs, tries to require('./a')
+exports.loaded = true;     // too late — b already got incomplete exports!
+
+// b.js
+const a = require('./a');
+console.log(a.loaded);  // false! (not true)
+```
+
+**Fix:** refactor shared code into a third module both can import.
+
+---
+
+### Mental Model
+
+```
+require()  = "run this file once, give me its exports"
+module.exports  = "here's what I'm sharing"
+require.cache  = "already ran? return cached result"
+```
 
 ### CommonJS vs ES Modules
 
@@ -1819,6 +2904,98 @@ const module = await import('./math.js');
 ---
 
 ## Cluster Module
+
+### 1. What is Clustering?
+
+Normally, one Node process listens on one port:
+
+```
+Port 3000  →  1 Node process  →  1 CPU core doing JS work
+```
+
+**Clustering** spawns multiple **child processes** (workers) that all share the **same port**:
+
+```
+Port 3000  →  Primary process (manager)
+                 ├── Worker 1 (own V8, own memory, own event loop)
+                 ├── Worker 2
+                 ├── Worker 3
+                 └── Worker 4
+```
+
+Incoming requests are distributed across workers (round-robin on Linux).
+
+**Where it lives:** `require('cluster')` — built on `child_process.fork()`.
+
+---
+
+### 2. Why does Cluster exist?
+
+**Problem — one core:**
+
+An 8-core server running a single Node process uses roughly **1/8 of CPU capacity** for JavaScript. The other 7 cores sit idle.
+
+**Solution — one process per core:**
+
+```javascript
+const numCPUs = require('os').cpus().length;  // 8
+for (let i = 0; i < numCPUs; i++) {
+  cluster.fork();  // 8 workers, 8 cores utilized
+}
+```
+
+**Bonus — crash isolation:**
+
+If Worker 3 crashes, the primary restarts it. Workers 1, 2, 4 keep serving requests.
+
+---
+
+### 3. Where is Cluster used?
+
+| Scenario | Use cluster? |
+|----------|--------------|
+| HTTP API on a VPS with 4+ cores | Yes |
+| AWS Lambda / serverless | No (one invocation = one process) |
+| CPU-heavy image processing | No — use **worker_threads** instead |
+| Production with Kubernetes | Usually K8s replicas instead of cluster |
+| Simple VPS without Docker | Yes, or PM2 cluster mode |
+
+**IPC — talking between primary and workers:**
+
+Workers **cannot share memory**. They communicate via messages:
+
+```javascript
+// Primary
+worker.send({ config: { port: 3000 } });
+
+// Worker
+process.on('message', (msg) => console.log(msg));
+process.send({ type: 'ready', pid: process.pid });
+```
+
+---
+
+### 4. Cluster vs Worker Threads
+
+| | Cluster | Worker Threads |
+|---|---------|----------------|
+| Unit | Separate **processes** | Threads in **same process** |
+| Memory | Isolated (no sharing) | Can share `SharedArrayBuffer` |
+| Best for | Scaling HTTP servers | CPU-intensive computation |
+| Crash | One worker dies, others live | One thread error can kill process |
+| Overhead | Higher (fork) | Lower |
+
+**Rule:** HTTP scaling → cluster. Heavy computation → worker_threads.
+
+---
+
+### Mental Model
+
+```
+Cluster = multiple restaurants, same address (port)
+Each restaurant has its own staff (V8, event loop, memory)
+Manager (primary) opens/closes restaurants and handles crashes
+```
 
 ### What is Clustering?
 
@@ -2160,6 +3337,108 @@ if (cluster.isPrimary) {
 ---
 
 ## Worker Threads
+
+### 1. What are Worker Threads?
+
+**Worker threads** let you run JavaScript on **parallel threads** inside the same Node process.
+
+```javascript
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+
+if (isMainThread) {
+  const worker = new Worker(__filename, { workerData: { n: 40 } });
+  worker.on('message', (result) => console.log('Fibonacci:', result));
+} else {
+  // This code runs on a SEPARATE thread
+  const result = fibonacci(workerData.n);
+  parentPort.postMessage(result);
+}
+```
+
+Each worker gets its own **V8 isolate** (separate heap, separate event loop) but shares the same OS process.
+
+**Where it lives:** `require('worker_threads')`. Libraries: `piscina` (worker pool), `sharp` (image processing).
+
+---
+
+### 2. Why do Worker Threads exist?
+
+This runs on the **main thread** and **freezes the entire server**:
+
+```javascript
+app.post('/parse', (req, res) => {
+  const data = JSON.parse(req.body);  // 50 MB JSON — blocks 2 seconds!
+  res.json(data);
+});
+```
+
+During those 2 seconds: no other requests handled, no timers fire, no WebSocket messages.
+
+**Worker thread solution:**
+
+```javascript
+app.post('/parse', (req, res) => {
+  const worker = new Worker('./parse-worker.js', { workerData: req.body });
+  worker.on('message', (data) => res.json(data));
+  // main thread is FREE to handle other requests immediately
+});
+```
+
+**Worker threads vs libuv thread pool:**
+
+| | libuv thread pool | worker_threads |
+|---|-------------------|----------------|
+| Who controls code? | Node internals only | **You** write the worker script |
+| Use case | fs, crypto, zlib | Your CPU-heavy logic |
+| API | `fs.readFile(cb)` | `new Worker('./work.js')` |
+
+---
+
+### 3. How do threads communicate?
+
+Workers **cannot share regular JS objects**. Three methods:
+
+**Method 1 — Structured clone (default):**
+
+```javascript
+worker.postMessage({ data: largeArray });  // COPIED — safe but slow for big data
+```
+
+**Method 2 — Transferable (zero-copy):**
+
+```javascript
+const buf = new ArrayBuffer(1024);
+worker.postMessage({ buf }, [buf]);  // MOVED — buf is now unusable on main thread
+```
+
+**Method 3 — SharedArrayBuffer:**
+
+```javascript
+const shared = new SharedArrayBuffer(4);
+// Both threads read/write same memory — MUST use Atomics for safety
+Atomics.add(new Int32Array(shared), 0, 1);
+```
+
+---
+
+### 4. When to use what
+
+```
+Scale HTTP across cores     →  cluster / PM2 / Kubernetes
+CPU-heavy JS computation    →  worker_threads
+Blocking fs/crypto          →  already on libuv thread pool (no action needed)
+Need crash isolation        →  cluster (not worker_threads)
+```
+
+---
+
+### Mental Model
+
+```
+Main thread     = reception desk (must stay responsive)
+Worker thread   = back office (heavy paperwork in parallel)
+libuv pool      = built-in messengers (fs/crypto only — you don't control them)
+```
 
 ### What are Worker Threads?
 
@@ -2533,6 +3812,114 @@ if (isMainThread) {
 
 ## Memory Management
 
+### 1. What is Node.js Memory?
+
+When your Node process runs, memory is split into regions:
+
+```javascript
+console.log(process.memoryUsage());
+// {
+//   rss: 45_000_000,       // total RAM used by process
+//   heapTotal: 10_000_000, // V8 heap allocated
+//   heapUsed: 5_000_000,   // V8 heap actually used
+//   external: 1_000_000,   // C++ objects (Buffers bound to JS)
+//   arrayBuffers: 500_000  // ArrayBuffers / SharedArrayBuffers
+// }
+```
+
+Think of it as:
+
+```
+┌─────────────────────────────────────────┐
+│  RSS (entire process footprint)         │
+│  ┌───────────────────────────────────┐  │
+│  │  V8 Heap (JS objects, arrays)     │  │
+│  │  ┌─────────────┐ ┌──────────────┐ │  │
+│  │  │ Young Gen   │ │ Old Gen      │ │  │
+│  │  │ (new objs)  │ │ (survivors)  │ │  │
+│  │  └─────────────┘ └──────────────┘ │  │
+│  └───────────────────────────────────┘  │
+│  External (Buffers, native C++ objects) │
+│  Stack (function call frames)           │
+└─────────────────────────────────────────┘
+```
+
+**Default heap limit:** ~1.4–2 GB on 64-bit. Raise with `node --max-old-space-size=4096 app.js`.
+
+---
+
+### 2. Why does Memory Management matter?
+
+**Memory leaks** — objects stay reachable forever, RSS grows until the OS kills your process:
+
+```javascript
+global.cache = global.cache || {};
+app.get('/user/:id', (req, res) => {
+  global.cache[req.params.id] = fetchUser(req.params.id);  // grows forever!
+});
+```
+
+**GC pauses** — when Old Generation fills, V8 runs Mark-Sweep-Compact (10–100+ ms). During this pause, your event loop stalls → latency spikes.
+
+**OOM crashes:**
+
+```
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+```
+
+---
+
+### 3. Common leak patterns — what, why, where
+
+| Pattern | Bad code | Why it leaks |
+|---------|----------|--------------|
+| **Global variable** | `global.users = {}` | Globals are never GC'd |
+| **Closure** | `return () => largeArray` | Closure holds entire array |
+| **Event listener** | `emitter.on('evt', fn)` never removed | Listener keeps closure alive |
+| **Timer** | `setInterval(...)` never cleared | Timer handle is a GC root |
+| **Unbounded cache** | `map.set(key, val)` with no limit | Every entry stays reachable |
+
+**Fix for caches:** use LRU with a max size:
+
+```javascript
+const LRU = require('lru-cache');
+const cache = new LRU({ max: 500 });
+```
+
+---
+
+### 4. Where to diagnose memory issues
+
+```javascript
+// Quick check
+console.log(process.memoryUsage());
+
+// Deep analysis — heap snapshot
+const v8 = require('v8');
+v8.writeHeapSnapshot('heap.heapsnapshot');
+// Open in Chrome DevTools → Memory tab → compare snapshots over time
+```
+
+```bash
+node --expose-gc app.js          # enable global.gc() for testing
+node --max-old-space-size=4096 app.js  # 4 GB limit
+node --inspect app.js              # Chrome DevTools live profiling
+```
+
+**RSS vs heapUsed:** if `heapUsed` is stable but `rss` keeps growing → likely **native memory leak** (Buffers, TLS, C++ addons), not a JS object leak.
+
+---
+
+### Mental Model
+
+```
+Memory you allocate  →  V8 tracks it  →  GC frees unreachable objects
+Memory you leak      →  stays reachable  →  RSS grows  →  OOM kill
+
+Young objects die fast (Scavenger GC, 1-2 ms)
+Old objects die slow (Major GC, 10-100+ ms pause)
+```
+
 ### Node.js Memory Limits
 
 ```javascript
@@ -2636,6 +4023,84 @@ console.log(v8.getHeapStatistics());
 ---
 
 ## Performance Optimization
+
+### 1. What is Performance Optimization in Node?
+
+Node performance is **not** about making V8 faster. It is about **not fighting the architecture**:
+
+```
+Single main thread  +  event loop  +  4 thread pool workers
+```
+
+Every optimization answers: *"Am I blocking the main thread, starving the thread pool, or wasting memory?"*
+
+---
+
+### 2. Why do Node apps become slow?
+
+**Reason 1 — Blocking the main thread:**
+
+```javascript
+// ❌ ALL users wait 500 ms
+const hash = crypto.pbkdf2Sync('password', 'salt', 100000, 64, 'sha512');
+```
+
+**Reason 2 — Sequential I/O when parallel is possible:**
+
+```javascript
+// ❌ 10 requests × 100 ms = 1000 ms total
+for (const id of ids) {
+  results.push(await fetchData(id));
+}
+
+// ✅ max(100 ms) = 100 ms total
+const results = await Promise.all(ids.map(id => fetchData(id)));
+```
+
+**Reason 3 — Loading huge data into memory:**
+
+```javascript
+// ❌ 2 GB in RAM
+fs.readFileSync('huge.csv');
+
+// ✅ 64 KB at a time
+fs.createReadStream('huge.csv').pipe(parser);
+```
+
+**Reason 4 — Thread pool saturation** — 5th `fs.readFile` waits because 4 crypto operations occupy all pool threads.
+
+---
+
+### 3. Where to apply optimizations
+
+| Location | Rule |
+|----------|------|
+| HTTP handlers | Never sync I/O, never CPU-heavy work on main thread |
+| File processing | Always streams for files > few MB |
+| Bulk API calls | `Promise.all` with concurrency limit (`p-limit`) |
+| Crypto / hashing | Async version or worker_threads |
+| Server startup | `UV_THREADPOOL_SIZE=16` if fs/crypto heavy |
+| Multi-core server | cluster or PM2 for HTTP; worker_threads for CPU |
+| Before guessing | `node --prof`, `clinic.js`, event loop lag metric |
+
+**Decision tree:**
+
+```
+Slow I/O?        → Promise.all + connection pooling + UV_THREADPOOL_SIZE
+Slow CPU?        → worker_threads
+Memory growing?  → streams + LRU cache
+Latency spikes?  → check GC pauses + event loop lag
+```
+
+---
+
+### Mental Model
+
+```
+Node is fast by default.
+You make it slow by blocking the one thread that matters.
+Fix the architecture, not the algorithm.
+```
 
 ### Async Best Practices
 
@@ -2766,6 +4231,82 @@ function processDataWorker(data) {
 ---
 
 ## Common Issues and Debugging
+
+### 1. What is debugging Node internals?
+
+Node bugs are rarely "wrong line of code." They are **subsystem failures**:
+
+| Category | Symptom |
+|----------|---------|
+| Event loop blocked | Everything freezes at once |
+| Thread pool saturated | Slow but not frozen |
+| Memory leak | RSS grows over hours/days |
+| Unhandled rejection | Random crash, no clear stack |
+| Handle leak | `EMFILE: too many open files` |
+
+You debug by identifying **which subsystem** failed, then using the right tool.
+
+---
+
+### 2. Why is Node debugging hard?
+
+Errors are **deferred**:
+
+```javascript
+fetchData();  // no .catch() — process crashes 30 seconds later on unrelated request
+```
+
+Leaks are **slow**:
+
+```
+Hour 1:  200 MB RSS  →  fine
+Hour 6:  800 MB RSS  →  fine
+Hour 12: OOM killed   →  "it crashed randomly"
+```
+
+The fix is mapping symptoms to subsystems, not adding more `console.log`.
+
+---
+
+### 3. Symptom → cause → tool
+
+| You see | Likely cause | First tool |
+|---------|--------------|------------|
+| All requests freeze | Main thread blocked | `node --prof`, event loop lag check |
+| Gradual slowdown | Thread pool saturated | Log fs/crypto callback timing |
+| RSS up, heap stable | Native/buffer leak | Track `external` in `memoryUsage()` |
+| RSS + heap both up | JS object leak | `v8.writeHeapSnapshot()` → DevTools diff |
+| Random crash | Unhandled rejection | `process.on('unhandledRejection')` |
+| `EMFILE` error | Open sockets/DB connections | `process._getActiveHandles()` |
+
+**Event loop lag check:**
+
+```javascript
+const start = process.hrtime();
+setImmediate(() => {
+  const ms = process.hrtime(start)[0] * 1000 + process.hrtime(start)[1] / 1e6;
+  if (ms > 50) console.warn(`Event loop lag: ${ms.toFixed(1)}ms`);
+});
+```
+
+**Useful commands:**
+
+```bash
+node --inspect app.js       # Chrome DevTools
+node --prof app.js          # CPU profile
+node --trace-warnings app.js
+```
+
+---
+
+### Mental Model
+
+```
+Don't ask "which line is wrong?"
+Ask "which subsystem is failing?"
+  → event loop? thread pool? heap? handles?
+Then use the tool for that subsystem.
+```
 
 ### Issue 1: Event Loop Blocked
 
