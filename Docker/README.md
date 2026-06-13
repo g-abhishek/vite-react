@@ -28,6 +28,15 @@ Each guide follows the same teaching pattern:
 
 No external links required to understand any topic.
 
+## Runnable Examples
+
+| Folder | What it demonstrates |
+|--------|----------------------|
+| [Test02-1/](./Test02-1/) | Minimal production-style Node + Express Dockerfile |
+| [hot-reload-example/](./hot-reload-example/) | Dev workflow: bind mount, nodemon, `docker-compose.dev.yml` |
+
+Hot reload walkthrough (concepts + commands): [02-Dockerfile.md § Development & Hot Reload](./02-Dockerfile.md#development--hot-reload-full-example).
+
 ## Study Order
 
 ```
