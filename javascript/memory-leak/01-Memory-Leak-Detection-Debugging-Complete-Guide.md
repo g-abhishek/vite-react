@@ -23,9 +23,8 @@ Every section follows the same rhythm:
 
 1. Read the concept first — understand *why* before *how*.
 2. Run the example yourself — don't skip terminal or DevTools steps.
-3. Do **Your Turn** before reading the solution at the bottom of the section.
-4. Check **Expected result** — if yours differs, that's where real learning happens.
-5. Every exercise and **Your challenge** has an **Expected result** inline. Full answers, sample output, and code fixes are in [Section 15 — Solutions Appendix](#15-solutions-appendix-all-your-turn-answers).
+3. Do **Your Turn** first — then scroll down to **Solution** on the same exercise (don't peek early).
+4. Check **Expected result** — if yours differs from **Solution**, that's where real learning happens.
 
 **Suggested path:**
 
@@ -56,7 +55,6 @@ Every section follows the same rhythm:
 12. [Advanced Patterns](#12-advanced-patterns)
 13. [When to Use What — Decision Guide](#13-when-to-use-what--decision-guide)
 14. [Common Pitfalls & How to Avoid Them](#14-common-pitfalls--how-to-avoid-them)
-15. [Solutions Appendix (All Your Turn Answers)](#15-solutions-appendix-all-your-turn-answers)
 
 ---
 
@@ -142,6 +140,8 @@ setInterval(() => {
 
 **Expected result:** `rss` and `heapUsed` print every 3 seconds with stable values (small jitter is normal).
 
+**Solution:** You should see repeating lines like `{"rss":"45MB","heapUsed":"4MB"}` with small fluctuations (±1–2 MB). No steady climb — that would suggest a leak in the script itself (there isn't one).
+
 **Bonus:** In Chrome, open any tab → `Shift+Esc` (Task Manager) → watch **Memory footprint** while navigating a heavy site like Gmail or Twitter.
 
 ---
@@ -204,6 +204,8 @@ setInterval(() => {}, 60000);
 2. Kill the process (`Ctrl+C`).
 
 **Expected result:** Roughly 80–150 MB jump depending on Node version (strings are not free).
+
+**Solution:** After `Allocated ~` prints, `heapUsed` jumps sharply. The process keeps running (`setInterval` at the end) so memory stays allocated until you `Ctrl+C`. This shows how fast large arrays add pressure — imagine one per leaked component.
 
 **Think about:** What if your app created one such array per user session and never released it?
 
@@ -559,7 +561,18 @@ const first = users[0];
 users.length = 0;
 ```
 
-**Expected answer:** `{ id: 1 }` is **NOT** collectible — `first` still references it. `{ id: 2 }` **IS** collectible (no references). See [Solution 3.1](#solution-31).
+**Expected answer:** `{ id: 1 }` is **NOT** collectible — `first` still references it. `{ id: 2 }` **IS** collectible (no references).
+
+**Solution:**
+
+```
+Stack                         Heap
+─────────────────────────────────────────
+users ──► (empty array)       { id: 1 } ◄── first  (NOT collectible)
+                              { id: 2 }            (collectible)
+```
+
+`users.length = 0` clears the array's contents but does not affect `first` — it still points at `{ id: 1 }`. Only `{ id: 2 }` has no remaining references and can be collected.
 
 ---
 
@@ -694,7 +707,34 @@ node --expose-gc javascript/memory-leak/labs/01-reachability.mjs
 
 **✓ You got it right if:** Removing the global assignment flips the last line from `true` to `false`. That proves the leak was the **root reference**, not the GC "failing."
 
-See [Solution 4.1](#solution-41) for sample terminal output and explanation.
+**Solution:**
+
+**Default run** (`globalThis.__leakedHandler = handler` present):
+
+```bash
+node --expose-gc javascript/memory-leak/labs/01-reachability.mjs
+```
+
+```
+Before clear — first.name: Alice
+After users.length = 0 — first.name: Alice
+Is Alice collectible? NO — `first` still references her object.
+
+After gc() — leaked handler still on globalThis: true
+```
+
+**After challenge** (remove `globalThis.__leakedHandler = handler`):
+
+```
+After gc() — leaked handler still on globalThis: false
+```
+
+| State | Retainer chain | After `gc()` |
+|-------|----------------|--------------|
+| Global line **present** | `globalThis` → `handler` → `bigPayload` | Handler survives |
+| Global line **removed** | No path from root | Handler + `bigPayload` collected |
+
+**Note:** Alice's object stays alive in both runs because `first` still references it. The challenge only fixes the global handler leak.
 
 ---
 
@@ -1347,7 +1387,13 @@ node --expose-gc javascript/memory-leak/labs/05-cycle-demo.mjs
 
 **Expected result:** `global holder exists: true` — only the cycle attached to `globalThis.holder` survives. The orphan cycle is collected.
 
-See [Example 3](#example-3-circular-references--when-they-leak-vs-when-they-dont) and [Solution 5.1](#solution-51-cycle-demo).
+**Solution:**
+
+```
+After gc(): global holder exists: true
+```
+
+Only the cycle on `globalThis.holder` survives. The orphan cycle (`a.ref ↔ b.ref` with no root) is collected — cycles alone do not leak.
 
 ### Your Turn — Exercise 5.2: Young temps vs promotion
 
@@ -1368,7 +1414,17 @@ node --expose-gc javascript/memory-leak/labs/07-generational-gc-demo.mjs
 
 **✓ You got it right if:** Part A heap stays low; Part B reports 200 survivors.
 
-See [Example 1](#example-1-generational-hypothesis--most-objects-die-young) and [Example 2](#example-2-accidental-ref--promotion--major-gc-pain).
+**Solution:**
+
+```
+[A after 200 requests + gc] heapUsed=3.4MB ...
+→ Temps were unreachable when each request ended.
+
+[B after 200 requests + gc] heapUsed=3.4MB ...
+→ survivors.length=200 (200 objects still reachable from root)
+```
+
+Part A: 10,000 temps × 200 requests — all die young (Minor GC). Part B: same temps collected, but **one survivor per request** in `survivors[]` stays reachable from a root.
 
 ### Your Turn — Exercise 5.3: Critical rule (three scenarios)
 
@@ -1389,7 +1445,17 @@ Scenario C — boundedCache.length = 2 → KEPT by design (max 2)
 
 **✓ You got it right if:** B keeps 1 array; C keeps exactly 2 entries after third `scenarioC()` call.
 
-See [Example 4](#example-4-the-critical-rule--reachable-vs-unreachable) and [Solution 5.3](#solution-53-critical-rule-demo).
+**Solution:**
+
+```
+Scenario B — leakedStore.length = 1 → KEPT (leak)
+Scenario C — boundedCache.length = 2 → KEPT by design (max 2)
+heapUsed: ~9MB
+```
+
+- **A:** No root path → large array collected after `gc()`.
+- **B:** `leakedStore` holds a reference → leak (reachable but unused).
+- **C:** Bounded to 2 entries → intentional retention, not a bug.
 
 ---
 
@@ -1501,7 +1567,17 @@ node javascript/memory-leak/labs/02-global-array-leak-FIXED.mjs
 
 **✓ You got it right if:** `log.length` stops at 500 no matter how many requests you simulate.
 
-See [Solution 6.1](#solution-61-your-fix-before-fixed-file).
+**Solution:**
+
+```javascript
+const MAX = 500;
+function handleRequest(body) {
+  requestLog.push({ body, at: Date.now() });
+  if (requestLog.length > MAX) requestLog.shift();
+}
+```
+
+Re-run after applying — `log.length=500`, `heapUsed` lower than the leaky run (`50000` entries).
 
 ### Your Turn — Exercise 6.2: Unbounded Cache Server
 
@@ -1536,7 +1612,37 @@ for i in $(seq 1 3000); do curl -s http://localhost:3456/ > /dev/null; done
 
 **✓ You got it right if:** `cache.size` never exceeds 100 and RSS stops growing linearly under steady load.
 
-See [Solution 6.2](#solution-62-cache-cap-sketch).
+**Solution:**
+
+Create `javascript/memory-leak/labs/03-leaky-cache-server-FIXED.mjs`:
+
+```javascript
+import http from 'http';
+
+const MAX = 100;
+const cache = new Map();
+
+function setCache(key, value) {
+  if (cache.size >= MAX) {
+    cache.delete(cache.keys().next().value);
+  }
+  cache.set(key, value);
+}
+
+const server = http.createServer((req, res) => {
+  setCache(`${req.url}-${Date.now()}`, new Array(5_000).fill(req.url));
+  res.end(`ok cache.size=${cache.size}\n`);
+});
+
+server.listen(3456, () => {
+  setInterval(() => {
+    const m = process.memoryUsage();
+    console.log(`cache.size=${cache.size} rss=${(m.rss / 1e6).toFixed(1)}MB`);
+  }, 3000);
+});
+```
+
+After 3000 curls: `cache.size` stays at `100`, RSS plateaus.
 
 ---
 
@@ -1620,6 +1726,19 @@ Fix the retaining edge → verify with T2 snapshot
 8. **Verification:** (metrics after fix)
 
 **Expected result:** A one-page template you can reuse on any leak.
+
+**Solution:**
+
+Your template should include at minimum:
+
+1. **Symptom** — e.g. "Tab memory +400 MB after 20 modal opens"
+2. **Repro steps** — numbered clicks/routes/API calls
+3. **Baseline metrics** — heap, listeners, DOM nodes before repro
+4. **After repro metrics** — same metrics after 10× repro
+5. **Snapshot delta** — top 3 constructors by Size Delta
+6. **Retainer chain** — e.g. `Window → scroll → Feed.useEffect → closure`
+7. **Fix** — one sentence
+8. **Verification** — metrics after fix match baseline
 
 ---
 
@@ -1792,6 +1911,8 @@ export function LeakyScroll() {
 
 **Expected result:** Component works; each unmount leaves a scroll listener behind.
 
+**Solution:** After 10 mount/unmount cycles, Chrome Performance monitor → **JS event listeners** should increase (~+1 per cycle) and not return to baseline. You have intentionally created the leak for Section 9 — do not fix yet.
+
 ### Your Turn — Exercise 8.2: Fix the Timer Leak
 
 **Goal:** Practice cleanup pattern.
@@ -1813,7 +1934,16 @@ useEffect(() => {
 
 **✓ You got it right if:** Unmounting silences the console completely.
 
-See [Solution 8.2](#solution-82-timer-cleanup).
+**Solution:**
+
+```javascript
+useEffect(() => {
+  const id = setInterval(() => console.log('tick'), 500);
+  return () => clearInterval(id);
+}, []);
+```
+
+Mount → `tick` every 500ms. Unmount → console silent within one interval.
 
 ---
 
@@ -1944,7 +2074,28 @@ Fix: delete from Map / null the ref
 
 **✓ You got it right if:** Listener count flat and snapshot comparison delta ≈ 0.
 
-See [Solution 8.1](#solution-81-leakyscroll-fix).
+**Solution (LeakyScroll fix):**
+
+```javascript
+useEffect(() => {
+  const bigData = new Array(100_000).fill('leak-payload');
+  const onScroll = () => {
+    setY(window.scrollY);
+    void bigData.length;
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  return () => window.removeEventListener('scroll', onScroll);
+}, []);
+```
+
+**Solution (DevTools verification table):**
+
+| Check | Leaky (before fix) | Fixed (correct) |
+|-------|-------------------|-----------------|
+| JS event listeners | +1 per mount/unmount cycle | Flat after cycles |
+| Snapshot `(closure)` Size Delta | Large positive | ≈ 0 |
+| Snapshot `# Listener` Delta | Positive | ≈ 0 |
+| Retainers panel | Path to `Window` / scroll | No scroll listener retaining component |
 
 ### Your Turn — Exercise 9.2: Allocation Timeline
 
@@ -1958,6 +2109,8 @@ See [Solution 8.1](#solution-81-leakyscroll-fix).
 4. Look for blue bars that **stay blue** after unmount (not freed).
 
 **Expected result:** Persistent blue blocks = leaked allocations. After fix, bars turn gray (freed).
+
+**Solution:** Before fix — blue allocation bars remain after unmount (closure + `bigData` still live). After adding `removeEventListener` cleanup — bars turn gray within seconds of unmount, meaning memory was freed.
 
 ---
 
@@ -2091,7 +2244,28 @@ node javascript/memory-leak/labs/04-event-emitter-FIXED.mjs
 
 **✓ You got it right if:** After cleanup, `bus.listenerCount('tick')` is `0`.
 
-See [Solution 10.1](#solution-101-eventemitter-fix) — or compare with `labs/04-event-emitter-FIXED.mjs`.
+**Solution:**
+
+```javascript
+import { EventEmitter } from 'events';
+
+const bus = new EventEmitter();
+
+function subscribe(userId, handler) {
+  bus.on('tick', handler);
+  return () => bus.off('tick', handler);
+}
+
+const unsubscribers = [];
+for (let i = 0; i < 15; i++) {
+  unsubscribers.push(subscribe(i, () => void i));
+}
+
+unsubscribers.forEach((off) => off());
+console.log('After cleanup:', bus.listenerCount('tick')); // 0
+```
+
+Or compare with `labs/04-event-emitter-FIXED.mjs`.
 
 ### Your Turn — Exercise 10.2: Monitor RSS Under Load
 
@@ -2109,6 +2283,8 @@ for i in $(seq 1 5000); do curl -s http://localhost:3456/ > /dev/null; done
 1. Record `cache.size` and `rss` every 30 seconds.
 
 **Expected result:** Linear growth of both — classic unbounded cache leak signature.
+
+**Solution:** Server logs should show `cache.size` climbing toward 5000 and `rss` rising every 30s (e.g. 45MB → 80MB → 120MB). This confirms unbounded retention — not normal cache plateau behavior.
 
 ---
 
@@ -2217,6 +2393,8 @@ node --inspect javascript/memory-leak/labs/03-leaky-cache-server.mjs
 
 **Expected result:** Positive delta on `(array)` entries tied to cache values.
 
+**Solution:** In snapshot comparison, sort by **Size Delta** — you should see `(array)` and `(string)` with large positive deltas. Retainers chain: `global` or `Map` → cache entry → `(array)` payload. Matches the leaky server's `new Array(5_000).fill(req.url)` per request.
+
 ### Your Turn — Exercise 11.2: Build a Memory Dashboard Script
 
 **Goal:** Create `javascript/memory-leak/labs/06-memory-dashboard.mjs` that logs all `process.memoryUsage()` fields every 5 seconds with timestamps. Run it alongside the leaky server.
@@ -2229,7 +2407,25 @@ node --inspect javascript/memory-leak/labs/03-leaky-cache-server.mjs
 2026-06-13T10:00:00.000Z | rss=45.2MB | heapUsed=4.1MB | heapTotal=6.5MB | external=1.2MB | arrayBuffers=0.0MB
 ```
 
-See [Solution 11.2](#solution-112-memory-dashboard) — or use the pre-built `labs/06-memory-dashboard.mjs`.
+**Solution:**
+
+```javascript
+setInterval(() => {
+  const m = process.memoryUsage();
+  console.log(
+    [
+      new Date().toISOString(),
+      `rss=${(m.rss / 1e6).toFixed(1)}MB`,
+      `heapUsed=${(m.heapUsed / 1e6).toFixed(1)}MB`,
+      `heapTotal=${(m.heapTotal / 1e6).toFixed(1)}MB`,
+      `external=${(m.external / 1e6).toFixed(1)}MB`,
+      `arrayBuffers=${(m.arrayBuffers / 1e6).toFixed(1)}MB`,
+    ].join(' | ')
+  );
+}, 5000);
+```
+
+Pre-built file: `labs/06-memory-dashboard.mjs`.
 
 ---
 
@@ -2318,6 +2514,8 @@ console.log('Strong map size:', strong.size); // still 1
 Run with `node --expose-gc`.
 
 **Expected result:** Strong Map retains entry (key object still referenced as Map key). WeakMap entry collectible once `obj` is null and GC runs.
+
+**Solution:** Console prints `Strong map size: 1`. The Map still holds the key object internally even after `obj = null`, so the entry survives. WeakMap has no enumerable size — its entry is gone after `gc()` because nothing else references the key. Use WeakMap when metadata should die with the DOM element/key object.
 
 ---
 
@@ -2472,370 +2670,14 @@ useEffect(() => {
 }, []);
 ```
 
-**Expected answer:** A leaks (no cleanup). B and C are correct. See [Solution 14.1](#solution-141).
+**Expected answer:** A leaks (no cleanup). B and C are correct.
 
----
+**Solution:**
 
-## 15. Solutions Appendix (All Your Turn Answers)
+- **A — LEAKS:** `keydown` listener added with no cleanup — `document` retains `fn` after unmount.
+- **B — OK:** `cache.delete(id)` on unmount/id change removes the retaining edge.
+- **C — OK:** `clearTimeout(t)` in cleanup cancels the timer and releases the closure.
 
-Use this section to **verify** your work after attempting each exercise. Every **Your Turn** and **Your challenge** in the guide maps here.
-
-### Master answer index
-
-
-| Exercise        | Type                | ✓ Verify you got it right when…                 | Solution                                                           |
-| --------------- | ------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
-| 1.1             | Observe memory      | Stable `rss`/`heapUsed` every 3s                | [§1 inline](#your-turn--exercise-11-observe-memory-in-nodejs)      |
-| 2.1             | Allocation cost     | ~80–150 MB heap jump after big array            | [§2 inline](#your-turn--exercise-21-feel-the-cost-of-retention)    |
-| 3.1             | Draw graph          | `{ id: 1 }` not collectible; `{ id: 2 }` is     | [Solution 3.1](#solution-31)                                       |
-| 4.1             | Reachability lab    | Alice still via `first`; global `true` after gc | [Solution 4.1](#solution-41)                                       |
-| 4.1 challenge   | Remove global line  | Last line flips to `false` after gc             | [Solution 4.1](#solution-41)                                       |
-| 5.1             | Cycle demo          | `global holder exists: true` after gc           | [Example 3](#example-3-circular-references--when-they-leak-vs-when-they-dont) |
-| 5.2             | Generational demo   | Part A flat heap; Part B `survivors.length=200` | [Example 1–2](#example-1-generational-hypothesis--most-objects-die-young) |
-| 5.3             | Critical rule demo  | B length=1 leak; C length=2 bounded           | [Example 4](#example-4-the-critical-rule--reachable-vs-unreachable) |
-| 6.1             | Global array leak   | Leaky `length=50000`; fix caps at 500/1000      | [Solution 6.1](#solution-61-your-fix-before-fixed-file)            |
-| 6.2             | Cache server        | Leaky `cache.size≈3000`; fix caps at 100        | [Solution 6.2](#solution-62-cache-cap-sketch)                      |
-| 7.1             | Investigation doc   | 8-section template filled in                    | [Solution 7.1](#solution-71-investigation-template)                |
-| 8.1             | LeakyScroll         | Listeners climb on mount/unmount                | [§8 inline](#your-turn--exercise-81-build-a-leaky-react-component) |
-| 8.2             | Timer cleanup       | Console silent after unmount                    | [Solution 8.2](#solution-82-timer-cleanup)                         |
-| 9.1             | DevTools detect     | Listeners + closure delta grow                  | [Solution 9.1](#solution-91-devtools-verification)                 |
-| 9.1 challenge   | Fix LeakyScroll     | Listeners flat; snapshot delta ≈ 0              | [Solution 8.1](#solution-81-leakyscroll-fix)                       |
-| 9.2             | Allocation timeline | Blue bars persist before fix; gray after        | [§9 inline](#your-turn--exercise-92-allocation-timeline)           |
-| 10.1            | EventEmitter        | Leaky count=15; fixed count=0                   | [Solution 10.1](#solution-101-eventemitter-fix)                    |
-| 10.2            | RSS under load      | `cache.size` and `rss` climb linearly           | [§10 inline](#your-turn--exercise-102-monitor-rss-under-load)      |
-| 11.1            | Node heap inspect   | Positive `(array)` delta in comparison          | [§11 inline](#your-turn--exercise-111-inspect-node-heap-in-chrome) |
-| 11.2            | Memory dashboard    | Timestamped line every 5s with all fields       | [Solution 11.2](#solution-112-memory-dashboard)                    |
-| 12.1            | WeakMap vs Map      | Strong Map size=1; WeakMap entry gone after gc  | [§12 inline](#your-turn--exercise-121-weakmap-vs-map)              |
-| 14.1            | Spot the bug        | Only **A** leaks                                | [Solution 14.1](#solution-141)                                     |
-| Final Challenge | End-to-end          | Browser + Node memory plateau after fix         | [Solution Final](#solution-final-end-to-end-challenge)             |
-
-
----
-
-### Solution 3.1
-
-```
-Stack                         Heap
-─────────────────────────────────────────
-users ──► (empty array)       { id: 1 } ◄── first  (NOT collectible)
-                              { id: 2 }            (collectible)
-```
-
----
-
-### Solution 4.1 — Reachability lab + global challenge
-
-**Default run** (`globalThis.__leakedHandler = handler` present):
-
-```bash
-node --expose-gc javascript/memory-leak/labs/01-reachability.mjs
-```
-
-**Sample output:**
-
-```
-Before clear — first.name: Alice
-After users.length = 0 — first.name: Alice
-Is Alice collectible? NO — `first` still references her object.
-
-After gc() — leaked handler still on globalThis: true
-```
-
-**After challenge** (remove or comment out `globalThis.__leakedHandler = handler`):
-
-```bash
-node --expose-gc javascript/memory-leak/labs/01-reachability.mjs
-```
-
-**Sample output:**
-
-```
-Before clear — first.name: Alice
-After users.length = 0 — first.name: Alice
-Is Alice collectible? NO — `first` still references her object.
-
-After gc() — leaked handler still on globalThis: false
-```
-
-**Why the change matters:**
-
-
-| State                   | Retainer chain                          | After `gc()`                                   |
-| ----------------------- | --------------------------------------- | ---------------------------------------------- |
-| Global line **present** | `globalThis` → `handler` → `bigPayload` | Handler survives — still reachable from root   |
-| Global line **removed** | No path from root to `handler`          | Handler + `bigPayload` collected — unreachable |
-
-
-**Note:** Alice's object `{ id: 1, name: 'Alice' }` is **still not collected** in both runs because `first` still references it. The challenge only fixes the **second** leak (global handler), not the first demo.
-
----
-
-### Solution 5.1 — Cycle demo
-
-```bash
-node --expose-gc javascript/memory-leak/labs/05-cycle-demo.mjs
-```
-
-**Expected output:**
-
-```
-After gc(): global holder exists: true
-```
-
-Only the cycle stored on `globalThis.holder` survives. The orphan cycle (no root path) is collected even though `a.ref ↔ b.ref` forms a cycle.
-
----
-
-### Solution 5.2 — Generational demo
-
-```bash
-node --expose-gc javascript/memory-leak/labs/07-generational-gc-demo.mjs
-```
-
-**Expected output (sample):**
-
-```
-[A after 200 requests + gc] heapUsed=3.4MB ...
-→ Temps were unreachable when each request ended.
-
-[B after 200 requests + gc] heapUsed=3.4MB ...
-→ survivors.length=200 (200 objects still reachable from root)
-```
-
-**Takeaway:** Part A = 10,000 temps × 200 requests, all die young. Part B = same temps collected, but **one survivor per request** stays in Old Space because `survivors[]` is a root.
-
----
-
-### Solution 5.3 — Critical rule demo
-
-```bash
-node --expose-gc javascript/memory-leak/labs/08-critical-rule-demo.mjs
-```
-
-**Expected output:**
-
-```
-Scenario B — leakedStore.length = 1 → KEPT (leak)
-Scenario C — boundedCache.length = 2 → KEPT by design (max 2)
-heapUsed: ~9MB (B's large array dominates; A's array was collected)
-```
-
----
-
-### Solution 6.1 (your fix before FIXED file)
-
-```javascript
-const MAX = 500;
-function handleRequest(body) {
-  requestLog.push({ body, at: Date.now() });
-  if (requestLog.length > MAX) requestLog.shift();
-}
-```
-
-**Verify:**
-
-```bash
-node javascript/memory-leak/labs/02-global-array-leak.mjs   # log.length=50000
-# apply your fix, then re-run:
-# log.length=500, heapUsed lower than leaky run
-```
-
----
-
-### Solution 6.2 (cache cap sketch)
-
-Create `javascript/memory-leak/labs/03-leaky-cache-server-FIXED.mjs`:
-
-```javascript
-import http from 'http';
-
-const MAX = 100;
-const cache = new Map();
-
-function setCache(key, value) {
-  if (cache.size >= MAX) {
-    const oldest = cache.keys().next().value;
-    cache.delete(oldest);
-  }
-  cache.set(key, value);
-}
-
-const server = http.createServer((req, res) => {
-  const key = `${req.url}-${Date.now()}`;
-  setCache(key, new Array(5_000).fill(req.url));
-  res.end(`ok cache.size=${cache.size}\n`);
-});
-
-server.listen(3456, () => {
-  console.log('Fixed server on http://localhost:3456');
-  setInterval(() => {
-    const m = process.memoryUsage();
-    console.log(`cache.size=${cache.size} rss=${(m.rss / 1e6).toFixed(1)}MB`);
-  }, 3000);
-});
-```
-
-**Verify:** After 3000 curls, `cache.size` stays at `100`, not `3000`.
-
----
-
-### Solution 7.1 — Investigation template
-
-Minimum sections your doc should contain:
-
-1. **Symptom** — e.g. "Tab memory +400 MB after 20 modal opens"
-2. **Repro steps** — numbered clicks/routes/API calls
-3. **Baseline metrics** — heap, listeners, DOM nodes before repro
-4. **After repro metrics** — same metrics after 10× repro
-5. **Snapshot delta** — top 3 constructors by Size Delta
-6. **Retainer chain** — e.g. `Window → scroll → Feed.useEffect → closure`
-7. **Fix** — one sentence
-8. **Verification** — metrics after fix match baseline
-
----
-
-### Solution 8.1 — LeakyScroll fix
-
-```javascript
-useEffect(() => {
-  const bigData = new Array(100_000).fill('leak-payload');
-  const onScroll = () => {
-    setY(window.scrollY);
-    void bigData.length;
-  };
-  window.addEventListener('scroll', onScroll, { passive: true });
-  return () => window.removeEventListener('scroll', onScroll);
-}, []);
-```
-
----
-
-### Solution 8.2 — Timer cleanup
-
-```javascript
-useEffect(() => {
-  const id = setInterval(() => console.log('tick'), 500);
-  return () => clearInterval(id);
-}, []);
-```
-
-**Verify:** Mount → see `tick` every 500ms. Unmount → console goes silent within one interval.
-
----
-
-### Solution 9.1 — DevTools verification
-
-
-| Check                                        | Leaky (before fix)                   | Fixed (correct)                        |
-| -------------------------------------------- | ------------------------------------ | -------------------------------------- |
-| Performance monitor → JS event listeners     | Increases ~1 per mount/unmount cycle | Flat after cycles                      |
-| Snapshot comparison → `(closure)` Size Delta | Large positive                       | ≈ 0                                    |
-| Snapshot comparison → `# Listener` Delta     | Positive                             | ≈ 0                                    |
-| Retainers panel                              | Path to `Window` / scroll            | No scroll listener retaining component |
-
-
----
-
-### Solution 10.1 — EventEmitter fix
-
-```javascript
-import { EventEmitter } from 'events';
-
-const bus = new EventEmitter();
-
-function subscribe(userId, handler) {
-  bus.on('tick', handler);
-  return () => bus.off('tick', handler);
-}
-
-const unsubscribers = [];
-for (let i = 0; i < 15; i++) {
-  unsubscribers.push(subscribe(i, () => void i));
-}
-
-console.log('After subscribe:', bus.listenerCount('tick')); // 15
-
-unsubscribers.forEach((off) => off());
-
-console.log('After cleanup:', bus.listenerCount('tick')); // 0
-```
-
----
-
-### Solution 11.2 (memory dashboard)
-
-Full file: `javascript/memory-leak/labs/06-memory-dashboard.mjs`
-
-```javascript
-setInterval(() => {
-  const m = process.memoryUsage();
-  console.log(
-    [
-      new Date().toISOString(),
-      `rss=${(m.rss / 1e6).toFixed(1)}MB`,
-      `heapUsed=${(m.heapUsed / 1e6).toFixed(1)}MB`,
-      `heapTotal=${(m.heapTotal / 1e6).toFixed(1)}MB`,
-      `external=${(m.external / 1e6).toFixed(1)}MB`,
-      `arrayBuffers=${(m.arrayBuffers / 1e6).toFixed(1)}MB`,
-    ].join(' | ')
-  );
-}, 5000);
-```
-
----
-
-### Solution 14.1
-
-- **A — LEAKS:** No cleanup on `keydown` listener.
-- **B — OK:** Deletes cache entry on unmount/id change.
-- **C — OK:** Clears timeout on unmount.
-
----
-
-### Solution Final — End-to-end challenge
-
-**Browser (React) — verify:**
-
-
-| Check                        | Before fix                               | After fix                      |
-| ---------------------------- | ---------------------------------------- | ------------------------------ |
-| JS event listeners           | Climbs each mount                        | Flat                           |
-| Pending fetch after navigate | Network completes + state update warning | Request aborted (`AbortError`) |
-| Snapshot Size Delta          | Positive `(closure)`                     | ≈ 0                            |
-
-
-**Node (Map cache) — verify:**
-
-
-| Check                            | Before fix   | After fix |
-| -------------------------------- | ------------ | --------- |
-| `cache.size` after 5000 requests | 5000         | ≤ 50      |
-| `rss` under steady curl load     | Linear climb | Plateaus  |
-
-
-**Minimal Node fix pattern:**
-
-```javascript
-const MAX = 50;
-const cache = new Map();
-// on set: if cache.size >= MAX, delete oldest key first
-```
-
-**Minimal React fix pattern:**
-
-```javascript
-useEffect(() => {
-  const controller = new AbortController();
-  const id = setInterval(() => {}, 1000);
-  fetch(url, { signal: controller.signal }).then(setData);
-  return () => {
-    clearInterval(id);
-    controller.abort();
-  };
-}, []);
-```
-
----
 
 ## Quick Reference — Lab Files
 
@@ -2858,7 +2700,7 @@ useEffect(() => {
 
 ## Final Challenge — End-to-End
 
-When you have completed all sections, do this **without looking at solutions**:
+When you have completed all sections, try this end-to-end challenge first, then check **Solution** below.
 
 1. Create a React component that leaks a `setInterval` **and** a `fetch` on mount.
 2. Detect both using Performance monitor + heap snapshot.
@@ -2868,9 +2710,46 @@ When you have completed all sections, do this **without looking at solutions**:
 6. Fix with max size 50.
 7. Verify memory plateaus in both browser and Node.
 
-**Expected result:** See [Solution Final — End-to-end challenge](#solution-final--end-to-end-challenge) for the verification table and fix patterns.
-
 **✓ You got it right if:** Browser listeners/heap delta stay flat after mount/unmount cycles **and** Node `cache.size` ≤ 50 with stable RSS under load.
+
+**Solution:**
+
+**Browser (React) — verify:**
+
+| Check | Before fix | After fix |
+|-------|-----------|-----------|
+| JS event listeners | Climbs each mount | Flat |
+| Pending fetch after navigate | Network completes + state update warning | Request aborted (`AbortError`) |
+| Snapshot Size Delta | Positive `(closure)` | ≈ 0 |
+
+**Node (Map cache) — verify:**
+
+| Check | Before fix | After fix |
+|-------|-----------|-----------|
+| `cache.size` after 5000 requests | 5000 | ≤ 50 |
+| `rss` under steady curl load | Linear climb | Plateaus |
+
+**Minimal React fix:**
+
+```javascript
+useEffect(() => {
+  const controller = new AbortController();
+  const id = setInterval(() => {}, 1000);
+  fetch(url, { signal: controller.signal }).then(setData);
+  return () => {
+    clearInterval(id);
+    controller.abort();
+  };
+}, []);
+```
+
+**Minimal Node fix:**
+
+```javascript
+const MAX = 50;
+const cache = new Map();
+// on set: if cache.size >= MAX, delete oldest key first
+```
 
 If you can complete the Final Challenge, you have practical leak detection skills — not just theory.
 
