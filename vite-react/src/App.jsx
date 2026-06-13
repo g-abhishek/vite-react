@@ -24,6 +24,7 @@ import WebWorker from "./components/WebWorker";
 import Table from "./components/Table";
 import ReactPortal from "./components/Portal";
 import ModalComponent from "./components/ModalComponent";
+import LeakyScroll from "./components/LeakyScroll";
 
 function App() {
   return (
@@ -53,6 +54,7 @@ function App() {
           <Link to={"/table"}>Table</Link>
           <Link to={"/portal"}>React Portal</Link>
           <Link to={"/modal"}>Modal</Link>
+          <Link to={"/leaky-scroll"}>LeakyScroll</Link>
 
           <div>Interview</div>
           <Link to={"/closure-interval"}>ClosureInterval</Link>
@@ -60,6 +62,7 @@ function App() {
         <div className="main-content">
           <Routes>
             <Route path="/closure-interval" element={<ClosureInterval />} />
+            <Route path="/leaky-scroll" element={<LeakyScroll />} />
             <Route path="/modal" element={<ModalComponent />} />
             <Route path="/portal" element={<ReactPortal />} />
             <Route path="/table" element={<Table />} />

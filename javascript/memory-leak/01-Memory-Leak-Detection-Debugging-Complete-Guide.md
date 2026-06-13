@@ -2,9 +2,9 @@
 
 > A hands-on learning guide: every concept comes with a worked example, a runnable demo, and a **Your Turn** exercise so you build real intuition — not just read theory.
 
-**Companion docs:** [`01-Event-Loop.md`](../01-Event-Loop.md), [`05-NodeJS-Internals.md`](../05-NodeJS-Internals.md), [`04-React-Internals.md`](../04-React-Internals.md), [`11-Frontend-Performance-Engineering-Complete-Guide.md`](../11-Frontend-Performance-Engineering-Complete-Guide.md)
+**Companion docs:** `[01-Event-Loop.md](../01-Event-Loop.md)`, `[05-NodeJS-Internals.md](../05-NodeJS-Internals.md)`, `[04-React-Internals.md](../04-React-Internals.md)`, `[11-Frontend-Performance-Engineering-Complete-Guide.md](../11-Frontend-Performance-Engineering-Complete-Guide.md)`
 
-**Runnable labs:** All Node.js demos live in [`labs/`](./labs/). React exercises use your `vite-react` app.
+**Runnable labs:** All Node.js demos live in `[labs/](./labs/)`. React exercises use your `vite-react` app.
 
 ---
 
@@ -25,15 +25,18 @@ Every section follows the same rhythm:
 2. Run the example yourself — don't skip terminal or DevTools steps.
 3. Do **Your Turn** before reading the solution at the bottom of the section.
 4. Check **Expected result** — if yours differs, that's where real learning happens.
+5. Every exercise and **Your challenge** has an **Expected result** inline. Full answers, sample output, and code fixes are in [Section 15 — Solutions Appendix](#15-solutions-appendix-all-your-turn-answers).
 
 **Suggested path:**
 
-| Week | Sections | Focus |
-|------|----------|-------|
-| 1 | 1–6 | Memory model, GC, what leaks are |
-| 2 | 7–9 | Detection mindset + Chrome DevTools |
-| 3 | 10–11 | Node.js leaks + profiling |
-| 4 | 12–14 | Advanced patterns, decisions, pitfalls |
+
+| Week | Sections | Focus                                  |
+| ---- | -------- | -------------------------------------- |
+| 1    | 1–6      | Memory model, GC, what leaks are       |
+| 2    | 7–9      | Detection mindset + Chrome DevTools    |
+| 3    | 10–11    | Node.js leaks + profiling              |
+| 4    | 12–14    | Advanced patterns, decisions, pitfalls |
+
 
 ---
 
@@ -59,16 +62,18 @@ Every section follows the same rhythm:
 
 ## Summary Cheatsheet
 
-| Pattern | Symptom | Detect with | Fix |
-|---------|---------|-------------|-----|
-| Missing cleanup | Listeners/timers climb on route change | Performance monitor, snapshot `# Listener` | `useEffect` return cleanup |
-| Unbounded cache | Map/Set size grows forever | `cache.size`, heap snapshot `(Map)` | LRU + TTL |
-| Global retention | RSS stair-step at flat traffic | heapdump → `global` retainer | Remove global, bound array |
-| Detached DOM | Tab memory huge, JS heap flat | Snapshot filter `Detached` | Delete refs on unmount |
-| Closure capture | `(closure)` delta in snapshot | Retainers panel | Keep only needed fields |
-| Fetch after unmount | State updates after navigate away | Network throttle + navigate | `AbortController` |
-| EventEmitter | `MaxListenersExceededWarning` | `listenerCount()` | Return `off()` unsubscribe |
-| Node streams | `external` climbs, `EMFILE` | `lsof`, `process.memoryUsage()` | `pipeline()`, `close()` |
+
+| Pattern             | Symptom                                | Detect with                                | Fix                        |
+| ------------------- | -------------------------------------- | ------------------------------------------ | -------------------------- |
+| Missing cleanup     | Listeners/timers climb on route change | Performance monitor, snapshot `# Listener` | `useEffect` return cleanup |
+| Unbounded cache     | Map/Set size grows forever             | `cache.size`, heap snapshot `(Map)`        | LRU + TTL                  |
+| Global retention    | RSS stair-step at flat traffic         | heapdump → `global` retainer               | Remove global, bound array |
+| Detached DOM        | Tab memory huge, JS heap flat          | Snapshot filter `Detached`                 | Delete refs on unmount     |
+| Closure capture     | `(closure)` delta in snapshot          | Retainers panel                            | Keep only needed fields    |
+| Fetch after unmount | State updates after navigate away      | Network throttle + navigate                | `AbortController`          |
+| EventEmitter        | `MaxListenersExceededWarning`          | `listenerCount()`                          | Return `off()` unsubscribe |
+| Node streams        | `external` climbs, `EMFILE`            | `lsof`, `process.memoryUsage()`            | `pipeline()`, `close()`    |
+
 
 **Default investigation:** Fixed repro → two snapshots → compare delta → walk retainers to root → fix → verify with third snapshot.
 
@@ -133,7 +138,7 @@ setInterval(() => {
 "
 ```
 
-3. Watch output for 30 seconds. Note the numbers.
+1. Watch output for 30 seconds. Note the numbers.
 
 **Expected result:** `rss` and `heapUsed` print every 3 seconds with stable values (small jitter is normal).
 
@@ -195,8 +200,8 @@ setInterval(() => {}, 60000);
 "
 ```
 
-2. Note the MB allocated.
-3. Kill the process (`Ctrl+C`).
+1. Note the MB allocated.
+2. Kill the process (`Ctrl+C`).
 
 **Expected result:** Roughly 80–150 MB jump depending on Node version (strings are not free).
 
@@ -208,21 +213,25 @@ setInterval(() => {}, 60000);
 
 ### Terminology you will use constantly
 
-| Term | Plain English | Example |
-|------|---------------|---------|
-| **Heap** | Storage for objects, arrays, closures | `{ users: [...] }` |
-| **Stack** | Storage for function frames and primitives | `const count = 5` |
-| **Reference** | Pointer from one variable to a heap object | `const a = obj` |
-| **GC root** | Starting point GC uses to find live objects | `window`, `globalThis`, active stack |
-| **Reachable** | Object has a path from a root | Listener closure → component state |
-| **Retained** | Kept alive because something still points to it | Global Map holding old sessions |
-| **Retainer** | The object holding the reference | `window` → `scroll listener` → `closure` |
-| **Shallow size** | Size of object itself | One object, no children |
-| **Retained size** | Object + everything only it keeps alive | Parent + entire subtree |
-| **Detached DOM** | Removed from page but still referenced in JS | Modal div kept in a Map |
-| **RSS** | Total RAM used by the process | What `kubectl top pod` shows |
 
-### How terms connect
+| Term              | Plain English                                   | Example                                  |
+| ----------------- | ----------------------------------------------- | ---------------------------------------- |
+| **Heap**          | Storage for objects, arrays, closures           | `{ users: [...] }`                       |
+| **Stack**         | Storage for function frames and primitives      | `const count = 5`                        |
+| **Reference**     | Pointer from one variable to a heap object      | `const a = obj`                          |
+| **GC root**       | Starting point GC uses to find live objects     | `window`, `globalThis`, active stack     |
+| **Reachable**     | Object has a path from a root                   | Listener closure → component state       |
+| **Retained**      | Kept alive because something still points to it | Global Map holding old sessions          |
+| **Retainer**      | The object holding the reference                | `window` → `scroll listener` → `closure` |
+| **Shallow size**  | Size of object itself                           | One object, no children                  |
+| **Retained size** | Object + everything only it keeps alive         | Parent + entire subtree                  |
+| **Detached DOM**  | Removed from page but still referenced in JS    | Modal div kept in a Map                  |
+| **RSS**           | Total RAM used by the process                   | What `kubectl top pod` shows             |
+
+
+### How terms connect (overview)
+
+This is the chain you will see in almost every React/browser leak:
 
 ```
 GC Root (window)
@@ -237,19 +246,306 @@ Closure (retainer)
 Component state array  ← LEAKED object (reachable but unused)
 ```
 
+Each arrow means **"still holds a reference to"**. If any path exists from a root to your data, GC **will not** delete it — even if your UI already unmounted.
+
+The subsections below explain **why** each link exists and **what breaks** when you remove the chain.
+
+---
+
+### Deep dive: What is a GC root?
+
+A **GC root** is where the garbage collector **starts** its search. Think of roots as **anchors**: anything connected to an anchor (by following references) is considered **alive** and is kept in memory.
+
+
+| Root (browser)                         | Why it is always "alive"                 |
+| -------------------------------------- | ---------------------------------------- |
+| `window` / `globalThis`                | Global object for the tab/process        |
+| Currently executing stack              | Local variables in active function calls |
+| Live DOM tree                          | Elements still attached to the document  |
+| Debugger / DevTools (while inspecting) | Tools can temporarily retain objects     |
+
+
+The GC algorithm (simplified) asks one question:
+
+> **"Starting from all roots, what objects can I reach by following every reference?"**
+
+
+| Answer                          | What happens                |
+| ------------------------------- | --------------------------- |
+| **Reachable** from a root       | Kept in memory              |
+| **Not reachable** from any root | Deleted (garbage collected) |
+
+
+**Key insight:** GC does not know your *intent* ("I unmounted this component, I don't need it anymore"). It only knows *reachability*.
+
+---
+
+### Deep dive: What is a retainer?
+
+A **retainer** is any object that **holds a reference** to another object.
+
+```
+Object A ──references──► Object B
+```
+
+Here **A retains B**. If A is reachable from a root, **B is also reachable** — even when B is useless to your application logic.
+
+In a leak chain:
+
+```
+window  ──►  listener  ──►  closure  ──►  [10 MB array]
+ root        retainer       retainer       leaked data
+```
+
+Fixing a leak almost always means **breaking one link in this chain** — usually the first incorrect edge (listener on `window`, entry in a global `Map`, etc.), not deleting the leaf object alone.
+
+---
+
+### Deep dive: The listener → closure → state chain (step by step)
+
+This is the most common React leak pattern. Walk through it once and the rest of the guide will click.
+
+#### Step 1 — Component mounts and registers a listener
+
+```javascript
+function Feed() {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    const bigData = new Array(1_000_000).fill('x'); // ~10 MB on heap
+
+    window.addEventListener('scroll', () => {
+      setItems(prev => [...prev, 'more']);
+      void bigData.length;
+    });
+    // BUG: no cleanup — listener never removed
+  }, []);
+
+  return <div>{items.length}</div>;
+}
+```
+
+When this runs, memory looks like this:
+
+```
+window (ROOT — alive for entire tab lifetime)
+  │
+  └── scroll listener (function object on heap)
+         │
+         └── closure ("backpack" of captured variables)
+                ├── setItems      ← ties back to React for this component
+                ├── items           ← from the render when effect ran
+                └── bigData         ← the 10 MB array
+```
+
+#### Step 2 — Why does the listener matter?
+
+`window.addEventListener('scroll', callback)` stores `callback` inside the browser's internal listener registry attached to `window`.
+
+So you now have a **complete path from a root to your data**:
+
+```
+window  ──►  scroll callback  ──►  closure  ──►  bigData
+```
+
+As long as that path exists, GC treats `bigData` (and everything in the closure) as **in use**.
+
+#### Step 3 — What is the closure doing here?
+
+The scroll handler is not "just a function". It was **created inside** `useEffect`, so it **captures** (closes over) every variable from that scope that it might use:
+
+- `setItems`
+- `bigData`
+- potentially other values from that render
+
+That captured bundle is called a **closure**. It stays attached to the function **for as long as the function object exists**.
+
+**Important:** The closure often retains **more than you expect** — sometimes the whole lexical environment, not only the one field you read inside the callback.
+
+#### Step 4 — User navigates away (component unmounts)
+
+You might expect:
+
+```
+Component unmounted  →  state freed  →  bigData freed  ✓
+```
+
+What **actually** happens:
+
+1. React removes the component from the UI tree and drops **its** references to that fiber/state.
+2. **But** `window` still holds the scroll listener.
+3. The listener's closure still holds `setItems`, state machinery, and `bigData`.
+
+```
+React tree          window (ROOT)
+   │                    │
+   ✗ (no ref)           └──► listener ──► closure ──► bigData
+```
+
+GC question: *"Can I reach `bigData` from a root?"*  
+Answer: **Yes** — via `window → listener → closure`.  
+Result: **Do not delete.** That is the leak.
+
+#### Step 5 — What "reachable but unused" means
+
+
+| Term          | Meaning in a leak                                                                 |
+| ------------- | --------------------------------------------------------------------------------- |
+| **Reachable** | GC can still find the object by walking references from a root                    |
+| **Unused**    | Your app logic no longer needs it (component gone, modal closed, user logged out) |
+
+
+In languages like C you would call `free()`. In JavaScript, **if any reference path exists — even a bug — GC will not collect it.**
+
+This is why saying *"GC will clean it up eventually"* is wrong for leaks: **the object is still reachable, so it is not garbage.**
+
+---
+
 ### Mental model: The reference graph
 
-Think of memory as a **directed graph**. Garbage collection asks: "Starting from roots, what nodes can I reach?" Everything unreachable gets deleted.
+Think of memory as **dots** (objects) and **arrows** (references):
 
 ```
-        window
-          │
-    scroll listener
-          │
-       closure ──► [10 MB array]  ← reachable = NOT collected
+     [window]              ← ROOT
+        │
+        ▼
+   [listener fn]
+        │
+        ▼
+    [closure]
+       /    \
+      ▼      ▼
+ [setItems] [bigData 10MB]   ← all kept alive together
 ```
 
-Remove the listener → closure becomes unreachable → array collected.
+**Mark phase (what GC does):**
+
+```
+1. Start at every root (window, stack, live DOM, …)
+2. Follow every arrow; mark each visited node
+3. Anything NEVER visited     → delete
+4. Anything visited           → keep
+```
+
+Your leaked array is **visited** because there is a path from `window`.
+
+**After fix (`removeEventListener`):**
+
+```
+Before cleanup:
+  window ──► listener ──► closure ──► bigData     (KEEP)
+
+After cleanup:
+  window ✗ listener
+  closure ──► bigData   (no path from any root)
+  → next GC cycle deletes closure + bigData
+```
+
+---
+
+### Analogy: Hotel checkout
+
+
+| Concept                | Real-world equivalent                      |
+| ---------------------- | ------------------------------------------ |
+| **GC root (`window`)** | Hotel front desk guest log                 |
+| **Event listener**     | Your name still listed as "checked in"     |
+| **Closure**            | Your room key + everything inside the room |
+| **10 MB array**        | Your luggage in the room                   |
+
+
+You **left the building** (component unmounted), but your name is **still on the log** (listener not removed). The hotel keeps the room reserved forever — even though you are not using it.
+
+**Fix:** Check out properly — `removeEventListener` in `useEffect` cleanup.
+
+---
+
+### Why `leaked = null` is not enough
+
+Developers sometimes think dropping their variable frees memory:
+
+```javascript
+let leaked = new Array(1_000_000).fill('leak');
+
+window.addEventListener('scroll', () => {
+  void leaked.length; // closure captures `leaked`
+});
+
+leaked = null; // YOU removed YOUR reference…
+// …but the listener's closure STILL references the array
+// → memory NOT freed
+```
+
+You removed **one** reference. The listener's closure is **another** reference. GC only collects when **no path from any root** exists.
+
+**Fix:** Remove the listener (or whatever holds the closure), not just null out your local variable.
+
+```javascript
+const onScroll = () => void leaked.length;
+window.addEventListener('scroll', onScroll);
+
+// later, on unmount:
+window.removeEventListener('scroll', onScroll); // cuts root → listener link
+leaked = null; // now nothing points to the array
+```
+
+---
+
+### The fix — and why it works
+
+```javascript
+useEffect(() => {
+  const bigData = new Array(1_000_000).fill('x');
+
+  const onScroll = () => {
+    setItems(prev => [...prev, 'more']);
+    void bigData.length;
+  };
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  return () => {
+    window.removeEventListener('scroll', onScroll); // breaks window → listener
+  };
+}, []);
+```
+
+On unmount:
+
+1. React runs the cleanup function.
+2. Browser removes `onScroll` from `window`'s listener list.
+3. No path remains: `window → … → bigData`.
+4. Next GC cycle collects the closure and the 10 MB array.
+
+**Critical detail:** You must pass the **same function reference** to `removeEventListener`. Creating a new arrow function in cleanup does nothing:
+
+```javascript
+// BAD — different function reference, listener NOT removed
+window.addEventListener('scroll', () => setY(window.scrollY));
+return () => window.removeEventListener('scroll', () => setY(window.scrollY));
+
+// GOOD — same reference
+const onScroll = () => setY(window.scrollY);
+window.addEventListener('scroll', onScroll);
+return () => window.removeEventListener('scroll', onScroll);
+```
+
+---
+
+### Self-check (before moving on)
+
+You should be able to answer:
+
+1. **Why doesn't unmounting a component free its memory?**
+  Because something outside React (usually `window`, a timer, socket, or module-level `Map`) still holds a reference.
+2. **Why does the event listener matter more than the component?**
+  The listener is reachable from `window` (a root). That keeps the closure — and everything it captured — alive.
+3. **What is a retainer chain?**
+  The path of references from a root to the leaked object: `window → listener → closure → data`.
+4. **What is the fix?**
+  Remove the retaining edge in cleanup (`removeEventListener`, `clearInterval`, `abort()`, `map.delete()`), then verify with DevTools.
+
+---
 
 ### Your Turn — Exercise 3.1: Draw the Graph
 
@@ -355,12 +651,14 @@ Step 3: Component unmounts but forgets removeEventListener
 
 ### Pros & cons — stack vs heap
 
-| | Stack | Heap |
-|---|-------|------|
-| **Speed** | Very fast alloc/free | Slower (GC managed) |
-| **Lifetime** | Function scope | Until unreachable |
-| **Contents** | Primitives, refs | Objects, closures |
-| **Cleanup** | Automatic on return | GC only |
+
+|              | Stack                | Heap                |
+| ------------ | -------------------- | ------------------- |
+| **Speed**    | Very fast alloc/free | Slower (GC managed) |
+| **Lifetime** | Function scope       | Until unreachable   |
+| **Contents** | Primitives, refs     | Objects, closures   |
+| **Cleanup**  | Automatic on return  | GC only             |
+
 
 ### Your Turn — Exercise 4.1: Run the Reachability Lab
 
@@ -384,6 +682,19 @@ node --expose-gc javascript/memory-leak/labs/01-reachability.mjs
 - With `--expose-gc`, the global handler survives `gc()` because `globalThis.__leakedHandler` is a root.
 
 **Your challenge:** Edit the file — remove the line `globalThis.__leakedHandler = handler` and re-run with `--expose-gc`. What changes?
+
+**Expected result (challenge):**
+
+
+| Run                                | `After gc() — leaked handler still on globalThis:`      |
+| ---------------------------------- | ------------------------------------------------------- |
+| **Default** (line present)         | `true` — handler reachable from `globalThis` root       |
+| **After your edit** (line removed) | `false` — handler + `bigPayload` collected after `gc()` |
+
+
+**✓ You got it right if:** Removing the global assignment flips the last line from `true` to `false`. That proves the leak was the **root reference**, not the GC "failing."
+
+See [Solution 4.1](#solution-41) for sample terminal output and explanation.
 
 ---
 
@@ -421,87 +732,664 @@ Sweep unreachable objects
 Resume JS
 ```
 
-### Generational hypothesis
+### Generational hypothesis — why V8 splits the heap
 
-**Most objects die young.** V8 uses:
+#### The observation
 
-| Generation | What goes here | Collection |
-|------------|----------------|------------|
-| **Young (New Space)** | Fresh allocations | Minor GC (Scavenge) — fast |
-| **Old (Old Space)** | Survivors of 2+ GC cycles | Major GC — slower |
+In real applications, most objects are **temporary**:
+
+```javascript
+function handleRequest(req) {
+  const temp = { body: req.body, parsed: JSON.parse(req.body) }; // created
+  return process(temp);                                           // used once
+} // temp becomes unreachable — function ends
+```
+
+Thousands of objects like `temp` are created and discarded every second. Only a **small fraction** (caches, DOM wrappers, long-lived app state) survive more than a few seconds.
+
+This is the **generational hypothesis**: *young objects usually die young; old objects usually stay alive a long time.*
+
+V8 exploits this by splitting memory into **two generations** and using **different GC strategies** for each — cheap collections for short-lived garbage, expensive collections only when necessary.
+
+#### Young vs Old space — what goes where
 
 ```
-Request handler creates 10,000 temp objects
-        │
-        ▼
-Request ends → temps unreachable
-        │
-        ▼
-Minor GC frees most in milliseconds
-        │
-        ▼
-Accidental long-lived ref → promoted to Old Space
-        │
-        ▼
-Major GC must scan entire old gen → 50–200ms pause
+┌─────────────────────────────────────────────────────────────────┐
+│                         V8 Heap                                  │
+├──────────────────────────────┬──────────────────────────────────┤
+│  NEW SPACE (Young Generation)│  OLD SPACE (Old Generation)       │
+│  ┌──────────┬──────────┐     │                                   │
+│  │ From     │  To      │     │  Long-lived objects:              │
+│  │ (semispaces)         │     │  • App caches (Map, arrays)       │
+│  └──────────┴──────────┘     │  • Closures on global listeners   │
+│                              │  • React fiber trees (mounted)    │
+│  Fresh allocations land here │  • Promoted survivors             │
+└──────────────────────────────┴──────────────────────────────────┘
 ```
+
+
+| Generation            | What goes here                     | Collection                  | Speed       | Frequency  |
+| --------------------- | ---------------------------------- | --------------------------- | ----------- | ---------- |
+| **Young (New Space)** | Every new object at birth          | **Minor GC** (Scavenge)     | ~1–5 ms     | Very often |
+| **Old (Old Space)**   | Objects that survived 2+ Minor GCs | **Major GC** (Mark-Compact) | ~50–200+ ms | Less often |
+
+
+**Promotion:** When an object survives a Minor GC cycle, V8 copies it to the other semispace. After surviving **typically 2 Scavenge cycles**, it gets **promoted** to Old Space. Promotion means: *"this object might live a while — treat it as long-lived."*
+
+#### Minor GC (Scavenge) — how young collection works
+
+New Space uses **two halves** (From-space and To-space):
+
+```
+Before Minor GC:
+  From-space: [obj1 dead] [obj2 alive] [obj3 dead] [obj4 alive]
+  To-space:   [ empty ]
+
+Step 1: Copy ONLY reachable objects from From → To
+  To-space:   [obj2] [obj4]
+
+Step 2: Swap roles — old From becomes empty To
+  From-space: [ empty ]        ← next allocations go here
+  To-space:   [obj2] [obj4]    ← survivors
+```
+
+**Why it's fast:** New Space is small (typically 1–8 MB). Most objects in it are already dead. V8 copies survivors instead of scanning the entire heap.
+
+**Analogy:** Cleaning a small dorm room where most students already left for break — you only pack what's still needed, not search the whole campus.
+
+#### Major GC (Mark-Compact) — how old collection works
+
+When Old Space fills up (or crosses a threshold), V8 runs **Major GC**:
+
+1. **Mark** — traverse from all roots through **entire Old Space** (and often young gen too)
+2. **Sweep/Compact** — free dead objects; optionally move live objects to reduce fragmentation
+
+**Why it's slow:** Old Space can be **hundreds of MB to GB**. Cost scales with **live data**, not just garbage.
+
+**Analogy:** Inventorying an entire warehouse — every aisle, every shelf — even if most boxes are empty.
+
+#### Walkthrough — request handler timeline (concrete)
+
+Follow one HTTP request through the generations:
+
+```
+t=0ms   Request arrives
+        │
+        ▼
+        handleRequest() allocates ~10,000 temp objects in New Space
+        (parsed JSON, intermediate arrays, string copies)
+        │
+t=2ms   Response sent, function returns
+        │
+        ▼
+        All 10,000 temps are UNREACHABLE (no variables point to them)
+        │
+t=5ms   Minor GC triggered (New Space nearly full)
+        │
+        ▼
+        Scavenge runs — copies zero survivors (all temps dead)
+        New Space cleared in ~1–3 ms
+        │
+        ✓ Healthy path — no leak, no promotion, fast cleanup
+```
+
+**Now the leak path — one accidental reference:**
+
+```
+t=0ms   Request creates 10,000 temps + 1 closure stored on global listener
+        │
+t=2ms   Request ends — 9,999 temps unreachable
+        BUT closure retains 1 temp object (or entire request body)
+        │
+t=5ms   Minor GC — closure survives (reachable from window listener)
+        │
+        ▼
+        Object PROMOTED to Old Space after 2nd survival
+        │
+t=1hr   10,000 requests later — 10,000 promoted objects in Old Space
+        │
+        ▼
+        Major GC runs — must mark ALL old gen objects
+        Pause: 80–200 ms  ← user feels jank / API latency spike
+        │
+        ✗ Leak path — objects wrongly promoted, expensive GC, growing pauses
+```
+
+**Senior insight:** Leaks don't just waste RAM. They **promote garbage to Old Space**, which makes **Major GC slower and more frequent** — that's the scroll jank and Node event-loop lag you see before OOM.
+
+#### How leaks interact with generations
+
+
+| Leak stage            | Where leaked objects live | What you feel                              |
+| --------------------- | ------------------------- | ------------------------------------------ |
+| **Early**             | Still in New Space        | Minor GC pressure, slight CPU bump         |
+| **After promotion**   | Old Space                 | Longer Major GC pauses, P99 latency spikes |
+| **Late / large leak** | Old Space full            | GC thrashing, OOM, tab crash               |
+
+
+**GC thrashing:** Heap is almost full of live (leaked) objects. GC runs constantly trying to free space, finds almost nothing, pauses repeatedly — CPU spikes, app freezes, then OOM.
+
+---
 
 ### Circular references — do they leak?
+
+#### What a cycle looks like in memory
 
 ```javascript
 const parent = { name: 'root' };
 const child = { name: 'leaf' };
 parent.child = child;
-child.parent = parent; // cycle
+child.parent = parent; // cycle: parent ◄──► child
 ```
 
-**No leak** if neither `parent` nor `child` is reachable from roots.
+```
+Heap graph (cycle):
 
-**Leak** if `global.cache = parent` — entire cycle kept alive.
+  ┌─────────┐      child       ┌─────────┐
+  │ parent  │ ───────────────► │  child  │
+  │         │ ◄─────────────── │         │
+  └─────────┘      parent      └─────────┘
+       ▲                              │
+       └──────── mutual refs ─────────┘
+```
+
+**Old myth (pre-2012 IE):** "Circular references always leak."  
+**Modern V8/Chrome:** Cycles are **fine** — GC handles them.
+
+#### Why modern GC handles cycles
+
+Mark-and-sweep does not follow references **into** objects and stop at cycles. It asks: *"Is there ANY path from a root to this object?"*
+
+```
+Case 1 — cycle with NO external reference:
+
+  (no root)     parent ◄──► child
+
+  GC: Start at roots → cannot reach parent or child → BOTH deleted ✓
+  Cycle does not matter — whole component is unreachable.
+```
+
+```
+Case 2 — cycle WITH one external reference:
+
+  global.cache ──► parent ◄──► child
+
+  GC: root → global.cache → parent → child → back to parent
+  Entire cycle is reachable → ALL kept alive ✗ LEAK
+```
+
+```javascript
+// Case 1 — NO leak (cycle orphaned)
+function createOrphanCycle() {
+  const parent = { name: 'root' };
+  const child = { name: 'leaf' };
+  parent.child = child;
+  child.parent = parent;
+  // function ends — no variable or root points to parent
+}
+createOrphanCycle();
+// parent + child cycle is unreachable → collected on next GC
+
+// Case 2 — LEAK (cycle anchored to root)
+const cache = new Map();
+function createLeakedCycle(id) {
+  const parent = { name: 'root' };
+  const child = { name: 'leaf' };
+  parent.child = child;
+  child.parent = parent;
+  cache.set(id, parent); // ONE external ref keeps ENTIRE cycle alive
+}
+```
+
+**Rule of thumb:** Cycles leak when **any node in the cycle** is reachable from a root — listener, global, module-level Map, React ref cache, etc.
+
+#### React example — cycle inside a leaked closure
+
+```javascript
+const nodeMap = new Map(); // module-level root
+
+function TreeNode({ id }) {
+  useEffect(() => {
+    const node = { id, children: [] };
+    node.parent = node; // self-cycle (toy example)
+    nodeMap.set(id, node);
+    // missing: return () => nodeMap.delete(id);
+  }, [id]);
+}
+```
+
+The cycle (`node.parent = node`) is not the problem. `**nodeMap.set(id, node)**` is — it anchors the object to a root that outlives the component.
+
+---
 
 ### The critical rule
 
-> **GC only collects UNREACHABLE memory.**
+> **GC only collects UNREACHABLE memory.**  
 > If anything still references it — even accidentally — it stays.
+
+This is the **single most important rule** for memory leak debugging. Everything else in this guide is an application of it.
+
+#### What GC can and cannot do
+
+
+| GC can ✓                                             | GC cannot ✗                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| Delete objects with **zero paths** from any root     | Delete objects you "don't need anymore" but something still references |
+| Break cycles when the **whole cycle** is unreachable | Guess that a reachable listener was "forgotten"                        |
+| Run automatically when heap pressure rises           | Free detached DOM if JS still holds a ref                              |
+| Promote survivors to Old Space                       | Shrink Old Space if live set keeps growing                             |
+
+
+#### Three scenarios — same object, different outcomes
+
+**Scenario A — collectible (healthy):**
+
+```javascript
+function process() {
+  const data = loadHugeArray();
+  return data.length;
+} // `data` unreachable when function returns → collected
+```
+
+**Scenario B — leak (reachable but unused):**
+
+```javascript
+const leaked = [];
+function process() {
+  const data = loadHugeArray();
+  leaked.push(data); // reachable from module-level `leaked` forever
+  return data.length;
+}
+```
+
+**Scenario C — looks like B but intentional (cache, not leak):**
+
+```javascript
+const cache = new LRU({ max: 100, ttl: 60000 });
+function process(key) {
+  const data = loadHugeArray();
+  cache.set(key, data); // reachable — but bounded + TTL eviction
+  return data.length;
+}
+```
+
+
+| Scenario | Reachable? | Unused?       | Leak?                                  |
+| -------- | ---------- | ------------- | -------------------------------------- |
+| A        | No         | —             | No — GC collects                       |
+| B        | Yes        | Yes           | **Yes — bug**                          |
+| C        | Yes        | Until evicted | No — intentional retention with policy |
+
+
+**Debugging shortcut:** When you find leaked memory in DevTools, ask: *"Who is the nearest retainer to a root?"* Fix **that edge**, not the leaf object.
+
+---
+
+### Stop-the-world pauses — why GC affects performance
+
+During parts of GC, JavaScript **pauses** so the memory graph stays consistent while marking.
+
+
+| GC type                      | Typical pause | When you notice                                  |
+| ---------------------------- | ------------- | ------------------------------------------------ |
+| Minor GC                     | 1–5 ms        | Rarely visible                                   |
+| Major GC (small heap)        | 10–50 ms      | Occasional frame drop                            |
+| Major GC (large heap + leak) | 50–200+ ms    | Scroll jank, INP regression, Node event loop lag |
+
+
+**In Node.js:** A 100 ms Major GC pause = 100 ms where **no callbacks, no I/O handlers, no timers** run on the main thread.
+
+**In React:** Same pause during scroll = dropped frames = "app feels sluggish."
+
+Leaks make this worse because **more live objects in Old Space = longer Major GC**.
+
+---
 
 ### Pros & cons — relying on GC alone
 
-| Pros | Cons |
-|------|------|
-| No manual `free()` | Cannot collect reachable-but-unused memory |
-| Handles cycles | GC pauses grow with live set |
-| Battle-tested | Native/DOM memory invisible to JS heap timing |
+
+| Pros                                           | Cons                                                                         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| No manual `free()` — fewer use-after-free bugs | Cannot collect **reachable-but-unused** memory (all JS leaks)                |
+| Handles cycles automatically                   | GC pauses grow with **live set size** (leaks → jank)                         |
+| Decades of engine tuning                       | **Native/DOM memory** (detached nodes, Buffers) invisible to JS heap metrics |
+| Works well for short-lived allocations         | **No eviction policy** — you must bound caches yourself                      |
+| Safe for most app code                         | `performance.memory` / `heapUsed` can look stable while **RSS climbs**       |
+
+
+#### What "native/DOM memory invisible to JS heap" means
+
+```javascript
+const div = document.createElement('div');
+document.body.appendChild(div);
+document.body.removeChild(div);
+window.__cache = div; // detached DOM — still in memory
+```
+
+- **`performance.memory.usedJSHeapSize`** — may barely change
+- **Chrome Task Manager "Memory footprint"** — climbs (layout, paint, GPU buffers)
+
+Always check **DOM node count** and **RSS**, not JS heap alone.
+
+---
+
+### Worked examples — concrete code for each concept
+
+Each example maps to one idea from this section. Run the Node labs yourself; use the browser snippet in DevTools console for DOM.
+
+---
+
+#### Example 1: Generational hypothesis — "most objects die young"
+
+**Story:** A coffee shop makes 10,000 paper cups per day (temp objects). Almost all are thrown away same day (Minor GC). Only the reusable thermos (long-lived cache) stays on the shelf (Old Space).
+
+**Healthy code — 10,000 temps per request, all die young:**
+
+```javascript
+// Simulates: parse JSON, build arrays, format response — then discard
+function handleRequest() {
+  const temps = [];
+  for (let i = 0; i < 10_000; i++) {
+    temps.push({ id: i, row: `user-${i}`, payload: 'x'.repeat(50) });
+  }
+  return { count: temps.length, total: temps.reduce((s, t) => s + t.id, 0) };
+}
+
+// Run 200 "requests"
+for (let i = 0; i < 200; i++) handleRequest();
+// Each call ends → `temps` unreachable → Minor GC collects ~10k objects per request
+// heapUsed stays flat (sawtooth up/down, no stair-step)
+```
+
+**What happens in V8:**
+
+```
+Request 1: allocate 10,000 objects in New Space
+Request 1 ends: all 10,000 unreachable
+Minor GC: copy 0 survivors → New Space empty (~1–3 ms)
+
+Request 2: allocate 10,000 NEW objects in same New Space slots
+... repeat 200× — no leak, no promotion
+```
+
+**Run the lab:**
+
+```bash
+node --expose-gc javascript/memory-leak/labs/07-generational-gc-demo.mjs
+```
+
+**Expected output (Part A):** `heapUsed` after 200 requests + gc stays near baseline (~3–5 MB). Part B shows `survivors.length=200` when one object per request is kept globally.
+
+---
+
+#### Example 2: Accidental ref → promotion → Major GC pain
+
+**Same request handler, but ONE object survives each request:**
+
+```javascript
+const requestLog = []; // module-level — reachable from root forever
+
+function leakyHandleRequest(reqId) {
+  const temps = [];
+  for (let i = 0; i < 10_000; i++) {
+    temps.push({ id: i, reqId, body: 'x'.repeat(100) });
+  }
+
+  // LEAK: keep one object per request (simulates closure on window listener)
+  requestLog.push(temps[0]);
+
+  return temps.length;
+}
+
+for (let i = 0; i < 1_000; i++) leakyHandleRequest(i);
+// 9,999 objects per request collected (die young)
+// 1 object per request PROMOTED to Old Space → 1,000 live objects in Old gen
+// Major GC now scans 1,000+ long-lived objects → 50–200 ms pauses
+```
+
+**Side-by-side:**
+
+| | Healthy handler | Leaky handler |
+|---|----------------|---------------|
+| Temps per request | 10,000 | 10,000 |
+| Survive after request | 0 | 1 (in `requestLog`) |
+| After 1,000 requests | ~0 extra live objects | 1,000 in Old Space |
+| GC cost | Minor GC only (fast) | Major GC scans growing Old Space (slow) |
+
+**React version of the same mistake:**
+
+```javascript
+useEffect(() => {
+  const requestBody = fetchHugePayload(); // 10,000 parsed rows
+
+  window.addEventListener('scroll', () => {
+    void requestBody.length; // closure captures entire payload
+  });
+  // missing cleanup → payload promoted to Old Space, never collected
+}, []);
+```
+
+---
+
+#### Example 3: Circular references — when they leak vs when they don't
+
+**Case A — NO leak (orphan cycle):**
+
+```javascript
+function buildTree() {
+  const parent = { name: 'root' };
+  const child = { name: 'leaf' };
+  parent.child = child;
+  child.parent = parent; // cycle inside function
+  return parent.id; // (undefined — toy example)
+}
+buildTree();
+// No variable outside function points to `parent`
+// GC: roots ✗→ parent ✗→ child → entire cycle deleted ✓
+```
+
+**Case B — LEAK (cycle anchored to root):**
+
+```javascript
+const cache = new Map();
+
+function buildTree(id) {
+  const parent = { name: 'root', id };
+  const child = { name: 'leaf' };
+  parent.child = child;
+  child.parent = parent;
+
+  cache.set(id, parent); // ONE external ref → whole cycle reachable
+  // missing: cache.delete(id) on cleanup
+}
+
+buildTree(1);
+buildTree(2);
+buildTree(3);
+// cache holds 3 cycles forever — parent ↔ child doesn't matter; root path exists
+```
+
+**Memory picture:**
+
+```
+Case A (no leak):                    Case B (leak):
+
+  parent ◄──► child                    cache (ROOT)
+  (floating — no root)                      │
+                                       parent ◄──► child
+                                       parent ◄──► child
+                                       parent ◄──► child
+```
+
+**Run the lab:**
+
+```bash
+node --expose-gc javascript/memory-leak/labs/05-cycle-demo.mjs
+# Output: global holder exists: true  (only the rooted cycle survives gc)
+```
+
+---
+
+#### Example 4: The critical rule — reachable vs unreachable
+
+**Scenario A — UNREACHABLE → GC collects ✓**
+
+```javascript
+function processOrder() {
+  const lineItems = new Array(100_000).fill({ sku: 'ABC', qty: 1 });
+  return lineItems.length;
+}
+processOrder();
+// `lineItems` dead when function returns — no root path → collected
+```
+
+**Scenario B — REACHABLE but UNUSED → leak ✗**
+
+```javascript
+const debugLog = [];
+
+function processOrder(orderId) {
+  const lineItems = new Array(100_000).fill({ sku: 'ABC', qty: 1 });
+  debugLog.push(lineItems); // you "forgot" this array — but GC sees a root path
+  return lineItems.length;
+}
+// App never reads debugLog again — UNUSED to you, REACHABLE to GC → LEAK
+```
+
+**Scenario C — REACHABLE by design → NOT a leak ✓**
+
+```javascript
+const MAX = 50;
+const cache = new Map();
+
+function processOrder(orderId) {
+  const lineItems = new Array(100_000).fill({ sku: 'ABC', qty: 1 });
+  cache.set(orderId, lineItems);
+  if (cache.size > MAX) cache.delete(cache.keys().next().value); // bounded
+  return lineItems.length;
+}
+// Reachable on purpose — eviction policy makes it intentional, not a bug
+```
+
+| Scenario | Reachable? | You still need it? | Verdict |
+|----------|------------|--------------------|---------|
+| A | No | — | GC collects |
+| B | Yes (`debugLog`) | No | **Leak** |
+| C | Yes (`cache`) | Yes, with limit | **Not a leak** |
+
+**Run the lab:**
+
+```bash
+node --expose-gc javascript/memory-leak/labs/08-critical-rule-demo.mjs
+```
+
+**Expected output:**
+
+```
+Scenario B — leakedStore.length = 1 → KEPT (leak)
+Scenario C — boundedCache.length = 2 → KEPT by design (max 2)
+```
+
+---
+
+#### Example 5: Pros & cons — one concrete example each
+
+| Pro/Con | What it means | Concrete example |
+|---------|---------------|------------------|
+| **Pro: No manual free()** | You don't call `delete` on objects | `const x = { a: 1 }; x = null;` — engine handles cleanup when unreachable |
+| **Pro: Handles cycles** | Orphan cycles are collected | Example 3 Case A — `parent ↔ child` with no external ref → both gone |
+| **Con: Can't collect reachable-but-unused** | GC keeps anything with a root path | Example 4 Scenario B — `debugLog` never read again but memory stays |
+| **Con: Pauses grow with live set** | More Old Space objects = longer Major GC | Example 2 — 1,000 leaked refs → scroll/API jank before OOM |
+| **Con: Native/DOM invisible to JS heap** | Detached DOM uses RAM not shown in `heapUsed` | Browser snippet below |
+
+**Browser — detached DOM (paste in DevTools console):**
+
+```javascript
+const div = document.createElement('div');
+div.innerHTML = '<p>'.repeat(5000); // heavy subtree
+document.body.appendChild(div);
+document.body.removeChild(div);
+
+window.__leakedDom = div; // detached but referenced — LEAK
+
+// Check: Chrome Task Manager → Memory footprint climbs
+// performance.memory.usedJSHeapSize may barely move
+```
+
+**Fix:** `delete window.__leakedDom` or `window.__leakedDom = null` — then GC can collect (after forced GC in heap snapshot).
+
+---
+
+### Self-check (before Exercise 5.1)
+
+1. **Why does V8 use two generations?**
+  Most objects die young — cheap Minor GC for temps, expensive Major GC only for survivors.
+2. **What is promotion?**
+  Object survives 2+ Minor GCs → moved to Old Space → future cleanup requires Major GC.
+3. **Do circular references always leak?**
+  No — only when the cycle is reachable from a root.
+4. **Why do leaks cause jank before OOM?**
+  Leaked objects fill Old Space → Major GC runs longer and more often → stop-the-world pauses.
+5. **What is the critical rule?**
+  GC collects unreachable memory only. Reachable = kept, even if unused.
+
+---
 
 ### Your Turn — Exercise 5.1: Cycle vs Root
 
 **Goal:** Understand when cycles leak and when they don't.
 
-**Steps:** Create `javascript/memory-leak/labs/05-cycle-demo.mjs` with:
-
-```javascript
-function makeCycle(attachToGlobal) {
-  const a = { tag: 'a' };
-  const b = { tag: 'b' };
-  a.ref = b;
-  b.ref = a;
-  if (attachToGlobal) globalThis.holder = a;
-  return { a, b };
-}
-
-makeCycle(false); // cycle 1 — no global
-makeCycle(true);  // cycle 2 — attached to global
-
-if (globalThis.gc) globalThis.gc();
-console.log('global holder exists:', !!globalThis.holder);
-```
-
-Run:
+**Steps:** Run the existing lab:
 
 ```bash
 node --expose-gc javascript/memory-leak/labs/05-cycle-demo.mjs
 ```
 
-**Expected result:** Cycle without global attachment is collected. Cycle attached to `globalThis.holder` survives.
+**Expected result:** `global holder exists: true` — only the cycle attached to `globalThis.holder` survives. The orphan cycle is collected.
+
+See [Example 3](#example-3-circular-references--when-they-leak-vs-when-they-dont) and [Solution 5.1](#solution-51-cycle-demo).
+
+### Your Turn — Exercise 5.2: Young temps vs promotion
+
+**Goal:** See generational behavior with your own eyes.
+
+**Steps:**
+
+```bash
+node --expose-gc javascript/memory-leak/labs/07-generational-gc-demo.mjs
+```
+
+**Expected result:**
+
+| Part | What to observe |
+|------|-----------------|
+| **A** | `heapUsed` flat after 200 requests + gc |
+| **B** | `survivors.length=200` — one object per request kept alive |
+
+**✓ You got it right if:** Part A heap stays low; Part B reports 200 survivors.
+
+See [Example 1](#example-1-generational-hypothesis--most-objects-die-young) and [Example 2](#example-2-accidental-ref--promotion--major-gc-pain).
+
+### Your Turn — Exercise 5.3: Critical rule (three scenarios)
+
+**Goal:** Distinguish leak vs intentional cache vs healthy cleanup.
+
+**Steps:**
+
+```bash
+node --expose-gc javascript/memory-leak/labs/08-critical-rule-demo.mjs
+```
+
+**Expected result:**
+
+```
+Scenario B — leakedStore.length = 1 → KEPT (leak)
+Scenario C — boundedCache.length = 2 → KEPT by design (max 2)
+```
+
+**✓ You got it right if:** B keeps 1 array; C keeps exactly 2 entries after third `scenarioC()` call.
+
+See [Example 4](#example-4-the-critical-rule--reachable-vs-unreachable) and [Solution 5.3](#solution-53-critical-rule-demo).
 
 ---
 
@@ -515,11 +1403,13 @@ This is NOT forgetting to call `free()`. It is an **unintentional reference** yo
 
 ### Leak vs cache vs legitimate growth
 
-| Type | Behavior | Example |
-|------|----------|---------|
-| **Leak** | Grows under fixed workload | Listener added every mount, never removed |
-| **Cache** | Grows then plateaus (or should) | LRU with max 500 entries |
-| **Legitimate** | Grows with users/data | More logged-in users → more session objects |
+
+| Type           | Behavior                        | Example                                     |
+| -------------- | ------------------------------- | ------------------------------------------- |
+| **Leak**       | Grows under fixed workload      | Listener added every mount, never removed   |
+| **Cache**      | Grows then plateaus (or should) | LRU with max 500 entries                    |
+| **Legitimate** | Grows with users/data           | More logged-in users → more session objects |
+
 
 **How to tell leak from cache:** Run the **same action 20 times**. If memory floor rises each cycle → leak.
 
@@ -600,6 +1490,19 @@ node javascript/memory-leak/labs/02-global-array-leak-FIXED.mjs
 
 **Your challenge:** Before opening the FIXED file, try fixing `02-global-array-leak.mjs` yourself — add a max size of 500.
 
+**Expected result (challenge):**
+
+
+| Metric                          | Leaky (before fix)         | Your fix (correct)              |
+| ------------------------------- | -------------------------- | ------------------------------- |
+| `log.length` after 50k requests | `50000`                    | `500` (capped)                  |
+| `heapUsed`                      | ~20–80 MB (varies by Node) | noticeably lower than leaky run |
+
+
+**✓ You got it right if:** `log.length` stops at 500 no matter how many requests you simulate.
+
+See [Solution 6.1](#solution-61-your-fix-before-fixed-file).
+
 ### Your Turn — Exercise 6.2: Unbounded Cache Server
 
 **Steps:**
@@ -610,17 +1513,30 @@ node javascript/memory-leak/labs/02-global-array-leak-FIXED.mjs
 node javascript/memory-leak/labs/03-leaky-cache-server.mjs
 ```
 
-2. In another terminal, hammer it:
+1. In another terminal, hammer it:
 
 ```bash
 for i in $(seq 1 3000); do curl -s http://localhost:3456/ > /dev/null; done
 ```
 
-3. Watch `cache.size` and `rss` climb in the server terminal.
+1. Watch `cache.size` and `rss` climb in the server terminal.
 
 **Expected result:** `cache.size` approaches 3000; RSS keeps rising.
 
 **Your challenge:** Create `03-leaky-cache-server-FIXED.mjs` that caps cache at 100 entries (use `Map` + delete oldest, or install `lru-cache`).
+
+**Expected result (challenge):**
+
+
+| Metric                        | Leaky server   | Your fix (correct)         |
+| ----------------------------- | -------------- | -------------------------- |
+| `cache.size` after 3000 curls | ~3000          | ≤ 100                      |
+| `rss` over time               | keeps climbing | plateaus after cache fills |
+
+
+**✓ You got it right if:** `cache.size` never exceeds 100 and RSS stops growing linearly under steady load.
+
+See [Solution 6.2](#solution-62-cache-cap-sketch).
 
 ---
 
@@ -666,15 +1582,17 @@ Fix the retaining edge → verify with T2 snapshot
 
 ### Step-by-step example — "Feed page gets slower"
 
-| Step | What you do | What you find |
-|------|-------------|---------------|
-| Observe | User reports scroll jank after 30 min | — |
-| Measure | Performance monitor: JS heap stair-step | Heap floor rises |
-| Confirm | Navigate away and back 10× | +5 MB per cycle |
-| Capture | Heap snapshot before/after | `(closure)` +40, `# Listener` +10 |
-| Retainers | `Window` → `scroll` → `Feed.useEffect` | Missing cleanup |
-| Fix | Add `removeEventListener` in return | — |
-| Verify | Repeat 10× — delta ≈ 0 | Fixed |
+
+| Step      | What you do                             | What you find                     |
+| --------- | --------------------------------------- | --------------------------------- |
+| Observe   | User reports scroll jank after 30 min   | —                                 |
+| Measure   | Performance monitor: JS heap stair-step | Heap floor rises                  |
+| Confirm   | Navigate away and back 10×              | +5 MB per cycle                   |
+| Capture   | Heap snapshot before/after              | `(closure)` +40, `# Listener` +10 |
+| Retainers | `Window` → `scroll` → `Feed.useEffect`  | Missing cleanup                   |
+| Fix       | Add `removeEventListener` in return     | —                                 |
+| Verify    | Repeat 10× — delta ≈ 0                  | Fixed                             |
+
 
 ### Leak vs not-a-leak checklist
 
@@ -799,15 +1717,17 @@ function brokenUnmount(el) {
 }
 ```
 
-**Detect:** Heap snapshot → filter **`Detached`** → walk retainers.
+**Detect:** Heap snapshot → filter `**Detached`** → walk retainers.
 
 ### 8.6 React Query / Apollo / Redux
 
-| Library | Leak pattern | Fix |
-|---------|--------------|-----|
-| React Query | Infinite inactive queries | `gcTime`, `queryClient.clear()` on logout |
-| Apollo | Unbounded normalized cache | `cache.evict()`, `cache.gc()` |
-| Redux | Entity map grows forever | Eviction middleware, pagination |
+
+| Library     | Leak pattern               | Fix                                       |
+| ----------- | -------------------------- | ----------------------------------------- |
+| React Query | Infinite inactive queries  | `gcTime`, `queryClient.clear()` on logout |
+| Apollo      | Unbounded normalized cache | `cache.evict()`, `cache.gc()`             |
+| Redux       | Entity map grows forever   | Eviction middleware, pagination           |
+
 
 ### 8.7 Observer APIs
 
@@ -825,12 +1745,14 @@ useEffect(() => {
 
 ### Pros & cons — common React fixes
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| `useEffect` cleanup | Standard, explicit | Easy to forget |
-| Custom hook (`useEventListener`) | Reusable, tested once | Abstraction overhead |
-| Event delegation | One listener for many children | Harder to reason about |
-| AbortController | Cancels network + avoids setState | Requires API support |
+
+| Approach                         | Pros                              | Cons                   |
+| -------------------------------- | --------------------------------- | ---------------------- |
+| `useEffect` cleanup              | Standard, explicit                | Easy to forget         |
+| Custom hook (`useEventListener`) | Reusable, tested once             | Abstraction overhead   |
+| Event delegation                 | One listener for many children    | Harder to reason about |
+| AbortController                  | Cancels network + avoids setState | Requires API support   |
+
 
 ### Your Turn — Exercise 8.1: Build a Leaky React Component
 
@@ -865,9 +1787,8 @@ export function LeakyScroll() {
 }
 ```
 
-2. Add a route or toggle to mount/unmount it 10 times.
-
-3. Do NOT fix it yet — you will detect it in Exercise 9.1.
+1. Add a route or toggle to mount/unmount it 10 times.
+2. Do NOT fix it yet — you will detect it in Exercise 9.1.
 
 **Expected result:** Component works; each unmount leaves a scroll listener behind.
 
@@ -884,6 +1805,15 @@ useEffect(() => {
 ```
 
 **Your task:** Add cleanup. Mount/unmount 5 times — confirm only one interval runs at a time (or zero after unmount).
+
+**Expected result:**
+
+- **Before fix:** Console logs `tick` forever after unmount; multiple intervals stack if you mount 5× (5× log rate).
+- **After fix:** Logs stop within ~500 ms of unmount; at most **one** `tick` per 500 ms while mounted, **zero** after unmount.
+
+**✓ You got it right if:** Unmounting silences the console completely.
+
+See [Solution 8.2](#solution-82-timer-cleanup).
 
 ---
 
@@ -915,15 +1845,17 @@ Memory
 
 1. `Cmd+Shift+P` → type **"Show Performance monitor"**
 2. Watch:
-   - **JS heap size**
-   - **DOM Nodes**
-   - **JS event listeners**
+  - **JS heap size**
+  - **DOM Nodes**
+  - **JS event listeners**
 
-| Metric | Leak signal |
-|--------|-------------|
-| JS heap | Floor rises each cycle |
-| DOM Nodes | Never drops after close modal |
-| JS event listeners | Stair-step on route change |
+
+| Metric             | Leak signal                   |
+| ------------------ | ----------------------------- |
+| JS heap            | Floor rises each cycle        |
+| DOM Nodes          | Never drops after close modal |
+| JS event listeners | Stair-step on route change    |
+
 
 ### 9.4 Heap Snapshot workflow
 
@@ -933,19 +1865,21 @@ Step 2: Click trash icon (Collect garbage)
 Step 3: Perform repro (mount/unmount LeakyScroll 10×)
 Step 4: Collect garbage again
 Step 5: Take snapshot (T1)
-Step 6: Select T1 → Summary dropdown → "Comparison" vs T1
+Step 6: Select T1 → Summary dropdown → "Comparison" vs T0
 Step 7: Sort by "Size Delta"
 Step 8: Click suspect → Retainers tab → walk to root
 ```
 
 ### Reading comparison columns
 
-| Column | Meaning |
-|--------|---------|
-| **# New** | Objects created since T0 |
-| **# Deleted** | Objects collected |
-| **# Delta** | Net growth — hunt large positives |
-| **Size Delta** | Bytes retained |
+
+| Column         | Meaning                           |
+| -------------- | --------------------------------- |
+| **# New**      | Objects created since T0          |
+| **# Deleted**  | Objects collected                 |
+| **# Delta**    | Net growth — hunt large positives |
+| **Size Delta** | Bytes retained                    |
+
 
 ### 9.5 Detached DOM workflow
 
@@ -964,12 +1898,14 @@ Fix: delete from Map / null the ref
 
 ### Common DevTools mistakes
 
-| Mistake | Why it fails |
-|---------|--------------|
-| Single snapshot only | Cannot see delta |
-| No forced GC | Noise from almost-dead objects |
-| Debugger paused | DevTools itself retains objects |
+
+| Mistake               | Why it fails                        |
+| --------------------- | ----------------------------------- |
+| Single snapshot only  | Cannot see delta                    |
+| No forced GC          | Noise from almost-dead objects      |
+| Debugger paused       | DevTools itself retains objects     |
 | Only watching JS heap | Detached DOM hides in native memory |
+
 
 ### Your Turn — Exercise 9.1: Detect the LeakyScroll Leak
 
@@ -995,6 +1931,20 @@ Fix: delete from Map / null the ref
 - Retainer chain: `Window` → `scroll` listener → your effect closure.
 
 **Your challenge:** Fix `LeakyScroll` (add cleanup). Re-run steps 5–7. Delta should be near zero.
+
+**Expected result (after fix):**
+
+
+| Metric                          | Before fix (10 mount/unmount) | After fix (correct)        |
+| ------------------------------- | ----------------------------- | -------------------------- |
+| JS event listeners              | +10 (or +1 per cycle)         | Returns to baseline (±0–1) |
+| Snapshot `(closure)` Size Delta | Large positive (MB-scale)     | Near 0 after forced GC     |
+| Retainer chain to `Window`      | Present for scroll handler    | Gone                       |
+
+
+**✓ You got it right if:** Listener count flat and snapshot comparison delta ≈ 0.
+
+See [Solution 8.1](#solution-81-leakyscroll-fix).
 
 ### Your Turn — Exercise 9.2: Allocation Timeline
 
@@ -1102,13 +2052,15 @@ Watch `process.memoryUsage().external` for Buffer leaks.
 
 ### Node leak summary
 
-| Category | Detect | Fix |
-|----------|--------|-----|
-| Global | heapdump → `global` | Bound or remove |
-| Cache | `Map.size` metric | LRU + TTL |
-| EventEmitter | `listenerCount()` | Return unsubscribe |
-| Streams | `external`, lsof | `pipeline`, `destroy` |
-| Timers | active handles | `clearInterval` on SIGTERM |
+
+| Category     | Detect              | Fix                        |
+| ------------ | ------------------- | -------------------------- |
+| Global       | heapdump → `global` | Bound or remove            |
+| Cache        | `Map.size` metric   | LRU + TTL                  |
+| EventEmitter | `listenerCount()`   | Return unsubscribe         |
+| Streams      | `external`, lsof    | `pipeline`, `destroy`      |
+| Timers       | active handles      | `clearInterval` on SIGTERM |
+
 
 ### Your Turn — Exercise 10.1: EventEmitter Leak
 
@@ -1128,6 +2080,19 @@ node javascript/memory-leak/labs/04-event-emitter-FIXED.mjs
 
 **Your challenge:** Write `04-event-emitter-leak.mjs` fix yourself before peeking at FIXED.
 
+**Expected result (challenge):**
+
+
+| Run      | `listenerCount('tick')` after 15 subscribes |
+| -------- | ------------------------------------------- |
+| Leaky    | `15` (+ `MaxListenersExceededWarning`)      |
+| Your fix | `0` after calling all unsubscribe functions |
+
+
+**✓ You got it right if:** After cleanup, `bus.listenerCount('tick')` is `0`.
+
+See [Solution 10.1](#solution-101-eventemitter-fix) — or compare with `labs/04-event-emitter-FIXED.mjs`.
+
 ### Your Turn — Exercise 10.2: Monitor RSS Under Load
 
 **Steps:**
@@ -1141,7 +2106,7 @@ node javascript/memory-leak/labs/04-event-emitter-FIXED.mjs
 for i in $(seq 1 5000); do curl -s http://localhost:3456/ > /dev/null; done
 ```
 
-3. Record `cache.size` and `rss` every 30 seconds.
+1. Record `cache.size` and `rss` every 30 seconds.
 
 **Expected result:** Linear growth of both — classic unbounded cache leak signature.
 
@@ -1162,12 +2127,14 @@ const m = process.memoryUsage();
 */
 ```
 
-| Field | Leak signal |
-|-------|-------------|
-| `rss` | Stair-step over hours |
-| `heapUsed` | Grows without plateau |
-| `external` | Buffer/stream leak |
+
+| Field                          | Leak signal            |
+| ------------------------------ | ---------------------- |
+| `rss`                          | Stair-step over hours  |
+| `heapUsed`                     | Grows without plateau  |
+| `external`                     | Buffer/stream leak     |
 | `heapTotal` ↑, `heapUsed` flat | Possible fragmentation |
+
 
 ### Example — memory logger
 
@@ -1214,11 +2181,13 @@ npx clinic doctor -- node javascript/memory-leak/labs/03-leaky-cache-server.mjs
 # Load test in another terminal, stop server, open HTML report
 ```
 
-| Tool | Use |
-|------|-----|
-| `clinic doctor` | Event loop delay, GC, CPU overview |
-| `clinic heapprofiler` | Allocation stacks |
-| `clinic bubbleprof` | Async delay paths |
+
+| Tool                  | Use                                |
+| --------------------- | ---------------------------------- |
+| `clinic doctor`       | Event loop delay, GC, CPU overview |
+| `clinic heapprofiler` | Allocation stacks                  |
+| `clinic bubbleprof`   | Async delay paths                  |
+
 
 ### Node investigation workflow
 
@@ -1242,9 +2211,9 @@ npx clinic doctor -- node javascript/memory-leak/labs/03-leaky-cache-server.mjs
 node --inspect javascript/memory-leak/labs/03-leaky-cache-server.mjs
 ```
 
-2. `chrome://inspect` → open DevTools for Node.
-3. Snapshot before load → run 1000 curls → snapshot after.
-4. Compare — find `Map` or `(array)` growth.
+1. `chrome://inspect` → open DevTools for Node.
+2. Snapshot before load → run 1000 curls → snapshot after.
+3. Compare — find `Map` or `(array)` growth.
 
 **Expected result:** Positive delta on `(array)` entries tied to cache values.
 
@@ -1252,7 +2221,15 @@ node --inspect javascript/memory-leak/labs/03-leaky-cache-server.mjs
 
 **Goal:** Create `javascript/memory-leak/labs/06-memory-dashboard.mjs` that logs all `process.memoryUsage()` fields every 5 seconds with timestamps. Run it alongside the leaky server.
 
-**Expected result:** CSV-style lines you could grep for trends.
+**Expected result:** A line every 5 seconds with `rss`, `heapUsed`, `heapTotal`, `external`, `arrayBuffers`. Values should update live; under load on the leaky server, `rss` trends upward.
+
+**✓ You got it right if:** Output looks like:
+
+```
+2026-06-13T10:00:00.000Z | rss=45.2MB | heapUsed=4.1MB | heapTotal=6.5MB | external=1.2MB | arrayBuffers=0.0MB
+```
+
+See [Solution 11.2](#solution-112-memory-dashboard) — or use the pre-built `labs/06-memory-dashboard.mjs`.
 
 ---
 
@@ -1308,12 +2285,14 @@ Use Redis or bounded LRU per process with TTL.
 
 ### 12.5 Production-safe capture
 
-| Do | Don't |
-|----|-------|
-| Reproduce in staging | Attach inspector to prod |
-| Sample heapdump off-peak | Snapshot during peak traffic |
-| Redact PII from dumps | Commit `.heapsnapshot` to git |
-| Canary after fix | Restart pods forever |
+
+| Do                       | Don't                         |
+| ------------------------ | ----------------------------- |
+| Reproduce in staging     | Attach inspector to prod      |
+| Sample heapdump off-peak | Snapshot during peak traffic  |
+| Redact PII from dumps    | Commit `.heapsnapshot` to git |
+| Canary after fix         | Restart pods forever          |
+
 
 ### Your Turn — Exercise 12.1: WeakMap vs Map
 
@@ -1365,23 +2344,27 @@ Where is the leak?
 
 ### Fix pattern lookup
 
-| You found… | Fix |
-|------------|-----|
-| `# Listener` delta | `removeEventListener` in cleanup |
-| `Detached HTMLDivElement` | Remove JS ref / Map entry |
-| `(closure)` on Window | Find listener/timer/socket |
-| `Map` growth in Node | LRU + TTL + delete on logout |
-| `external` growth | Streams, Buffers — use pipeline |
-| Fetch after unmount | AbortController |
-| React Query count | Lower `gcTime`, clear on logout |
+
+| You found…                | Fix                              |
+| ------------------------- | -------------------------------- |
+| `# Listener` delta        | `removeEventListener` in cleanup |
+| `Detached HTMLDivElement` | Remove JS ref / Map entry        |
+| `(closure)` on Window     | Find listener/timer/socket       |
+| `Map` growth in Node      | LRU + TTL + delete on logout     |
+| `external` growth         | Streams, Buffers — use pipeline  |
+| Fetch after unmount       | AbortController                  |
+| React Query count         | Lower `gcTime`, clear on logout  |
+
 
 ### By experience level
 
-| Level | Start with | Escalate to |
-|-------|------------|-------------|
-| First leak | Performance monitor + cleanup audit | Snapshot comparison |
-| Recurring leak | memlab / CI heap budget | Allocation timeline |
-| Production incident | RSS metrics + staging repro | heapdump + clinic |
+
+| Level               | Start with                          | Escalate to         |
+| ------------------- | ----------------------------------- | ------------------- |
+| First leak          | Performance monitor + cleanup audit | Snapshot comparison |
+| Recurring leak      | memlab / CI heap budget             | Allocation timeline |
+| Production incident | RSS metrics + staging repro         | heapdump + clinic   |
+
 
 ---
 
@@ -1495,6 +2478,40 @@ useEffect(() => {
 
 ## 15. Solutions Appendix (All Your Turn Answers)
 
+Use this section to **verify** your work after attempting each exercise. Every **Your Turn** and **Your challenge** in the guide maps here.
+
+### Master answer index
+
+
+| Exercise        | Type                | ✓ Verify you got it right when…                 | Solution                                                           |
+| --------------- | ------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
+| 1.1             | Observe memory      | Stable `rss`/`heapUsed` every 3s                | [§1 inline](#your-turn--exercise-11-observe-memory-in-nodejs)      |
+| 2.1             | Allocation cost     | ~80–150 MB heap jump after big array            | [§2 inline](#your-turn--exercise-21-feel-the-cost-of-retention)    |
+| 3.1             | Draw graph          | `{ id: 1 }` not collectible; `{ id: 2 }` is     | [Solution 3.1](#solution-31)                                       |
+| 4.1             | Reachability lab    | Alice still via `first`; global `true` after gc | [Solution 4.1](#solution-41)                                       |
+| 4.1 challenge   | Remove global line  | Last line flips to `false` after gc             | [Solution 4.1](#solution-41)                                       |
+| 5.1             | Cycle demo          | `global holder exists: true` after gc           | [Example 3](#example-3-circular-references--when-they-leak-vs-when-they-dont) |
+| 5.2             | Generational demo   | Part A flat heap; Part B `survivors.length=200` | [Example 1–2](#example-1-generational-hypothesis--most-objects-die-young) |
+| 5.3             | Critical rule demo  | B length=1 leak; C length=2 bounded           | [Example 4](#example-4-the-critical-rule--reachable-vs-unreachable) |
+| 6.1             | Global array leak   | Leaky `length=50000`; fix caps at 500/1000      | [Solution 6.1](#solution-61-your-fix-before-fixed-file)            |
+| 6.2             | Cache server        | Leaky `cache.size≈3000`; fix caps at 100        | [Solution 6.2](#solution-62-cache-cap-sketch)                      |
+| 7.1             | Investigation doc   | 8-section template filled in                    | [Solution 7.1](#solution-71-investigation-template)                |
+| 8.1             | LeakyScroll         | Listeners climb on mount/unmount                | [§8 inline](#your-turn--exercise-81-build-a-leaky-react-component) |
+| 8.2             | Timer cleanup       | Console silent after unmount                    | [Solution 8.2](#solution-82-timer-cleanup)                         |
+| 9.1             | DevTools detect     | Listeners + closure delta grow                  | [Solution 9.1](#solution-91-devtools-verification)                 |
+| 9.1 challenge   | Fix LeakyScroll     | Listeners flat; snapshot delta ≈ 0              | [Solution 8.1](#solution-81-leakyscroll-fix)                       |
+| 9.2             | Allocation timeline | Blue bars persist before fix; gray after        | [§9 inline](#your-turn--exercise-92-allocation-timeline)           |
+| 10.1            | EventEmitter        | Leaky count=15; fixed count=0                   | [Solution 10.1](#solution-101-eventemitter-fix)                    |
+| 10.2            | RSS under load      | `cache.size` and `rss` climb linearly           | [§10 inline](#your-turn--exercise-102-monitor-rss-under-load)      |
+| 11.1            | Node heap inspect   | Positive `(array)` delta in comparison          | [§11 inline](#your-turn--exercise-111-inspect-node-heap-in-chrome) |
+| 11.2            | Memory dashboard    | Timestamped line every 5s with all fields       | [Solution 11.2](#solution-112-memory-dashboard)                    |
+| 12.1            | WeakMap vs Map      | Strong Map size=1; WeakMap entry gone after gc  | [§12 inline](#your-turn--exercise-121-weakmap-vs-map)              |
+| 14.1            | Spot the bug        | Only **A** leaks                                | [Solution 14.1](#solution-141)                                     |
+| Final Challenge | End-to-end          | Browser + Node memory plateau after fix         | [Solution Final](#solution-final-end-to-end-challenge)             |
+
+
+---
+
 ### Solution 3.1
 
 ```
@@ -1503,6 +2520,107 @@ Stack                         Heap
 users ──► (empty array)       { id: 1 } ◄── first  (NOT collectible)
                               { id: 2 }            (collectible)
 ```
+
+---
+
+### Solution 4.1 — Reachability lab + global challenge
+
+**Default run** (`globalThis.__leakedHandler = handler` present):
+
+```bash
+node --expose-gc javascript/memory-leak/labs/01-reachability.mjs
+```
+
+**Sample output:**
+
+```
+Before clear — first.name: Alice
+After users.length = 0 — first.name: Alice
+Is Alice collectible? NO — `first` still references her object.
+
+After gc() — leaked handler still on globalThis: true
+```
+
+**After challenge** (remove or comment out `globalThis.__leakedHandler = handler`):
+
+```bash
+node --expose-gc javascript/memory-leak/labs/01-reachability.mjs
+```
+
+**Sample output:**
+
+```
+Before clear — first.name: Alice
+After users.length = 0 — first.name: Alice
+Is Alice collectible? NO — `first` still references her object.
+
+After gc() — leaked handler still on globalThis: false
+```
+
+**Why the change matters:**
+
+
+| State                   | Retainer chain                          | After `gc()`                                   |
+| ----------------------- | --------------------------------------- | ---------------------------------------------- |
+| Global line **present** | `globalThis` → `handler` → `bigPayload` | Handler survives — still reachable from root   |
+| Global line **removed** | No path from root to `handler`          | Handler + `bigPayload` collected — unreachable |
+
+
+**Note:** Alice's object `{ id: 1, name: 'Alice' }` is **still not collected** in both runs because `first` still references it. The challenge only fixes the **second** leak (global handler), not the first demo.
+
+---
+
+### Solution 5.1 — Cycle demo
+
+```bash
+node --expose-gc javascript/memory-leak/labs/05-cycle-demo.mjs
+```
+
+**Expected output:**
+
+```
+After gc(): global holder exists: true
+```
+
+Only the cycle stored on `globalThis.holder` survives. The orphan cycle (no root path) is collected even though `a.ref ↔ b.ref` forms a cycle.
+
+---
+
+### Solution 5.2 — Generational demo
+
+```bash
+node --expose-gc javascript/memory-leak/labs/07-generational-gc-demo.mjs
+```
+
+**Expected output (sample):**
+
+```
+[A after 200 requests + gc] heapUsed=3.4MB ...
+→ Temps were unreachable when each request ended.
+
+[B after 200 requests + gc] heapUsed=3.4MB ...
+→ survivors.length=200 (200 objects still reachable from root)
+```
+
+**Takeaway:** Part A = 10,000 temps × 200 requests, all die young. Part B = same temps collected, but **one survivor per request** stays in Old Space because `survivors[]` is a root.
+
+---
+
+### Solution 5.3 — Critical rule demo
+
+```bash
+node --expose-gc javascript/memory-leak/labs/08-critical-rule-demo.mjs
+```
+
+**Expected output:**
+
+```
+Scenario B — leakedStore.length = 1 → KEPT (leak)
+Scenario C — boundedCache.length = 2 → KEPT by design (max 2)
+heapUsed: ~9MB (B's large array dominates; A's array was collected)
+```
+
+---
 
 ### Solution 6.1 (your fix before FIXED file)
 
@@ -1514,22 +2632,69 @@ function handleRequest(body) {
 }
 ```
 
+**Verify:**
+
+```bash
+node javascript/memory-leak/labs/02-global-array-leak.mjs   # log.length=50000
+# apply your fix, then re-run:
+# log.length=500, heapUsed lower than leaky run
+```
+
+---
+
 ### Solution 6.2 (cache cap sketch)
 
+Create `javascript/memory-leak/labs/03-leaky-cache-server-FIXED.mjs`:
+
 ```javascript
+import http from 'http';
+
 const MAX = 100;
 const cache = new Map();
 
-function set(key, value) {
+function setCache(key, value) {
   if (cache.size >= MAX) {
     const oldest = cache.keys().next().value;
     cache.delete(oldest);
   }
   cache.set(key, value);
 }
+
+const server = http.createServer((req, res) => {
+  const key = `${req.url}-${Date.now()}`;
+  setCache(key, new Array(5_000).fill(req.url));
+  res.end(`ok cache.size=${cache.size}\n`);
+});
+
+server.listen(3456, () => {
+  console.log('Fixed server on http://localhost:3456');
+  setInterval(() => {
+    const m = process.memoryUsage();
+    console.log(`cache.size=${cache.size} rss=${(m.rss / 1e6).toFixed(1)}MB`);
+  }, 3000);
+});
 ```
 
-### Solution 8.1 (LeakyScroll fix)
+**Verify:** After 3000 curls, `cache.size` stays at `100`, not `3000`.
+
+---
+
+### Solution 7.1 — Investigation template
+
+Minimum sections your doc should contain:
+
+1. **Symptom** — e.g. "Tab memory +400 MB after 20 modal opens"
+2. **Repro steps** — numbered clicks/routes/API calls
+3. **Baseline metrics** — heap, listeners, DOM nodes before repro
+4. **After repro metrics** — same metrics after 10× repro
+5. **Snapshot delta** — top 3 constructors by Size Delta
+6. **Retainer chain** — e.g. `Window → scroll → Feed.useEffect → closure`
+7. **Fix** — one sentence
+8. **Verification** — metrics after fix match baseline
+
+---
+
+### Solution 8.1 — LeakyScroll fix
 
 ```javascript
 useEffect(() => {
@@ -1543,20 +2708,81 @@ useEffect(() => {
 }, []);
 ```
 
+---
+
+### Solution 8.2 — Timer cleanup
+
+```javascript
+useEffect(() => {
+  const id = setInterval(() => console.log('tick'), 500);
+  return () => clearInterval(id);
+}, []);
+```
+
+**Verify:** Mount → see `tick` every 500ms. Unmount → console goes silent within one interval.
+
+---
+
+### Solution 9.1 — DevTools verification
+
+
+| Check                                        | Leaky (before fix)                   | Fixed (correct)                        |
+| -------------------------------------------- | ------------------------------------ | -------------------------------------- |
+| Performance monitor → JS event listeners     | Increases ~1 per mount/unmount cycle | Flat after cycles                      |
+| Snapshot comparison → `(closure)` Size Delta | Large positive                       | ≈ 0                                    |
+| Snapshot comparison → `# Listener` Delta     | Positive                             | ≈ 0                                    |
+| Retainers panel                              | Path to `Window` / scroll            | No scroll listener retaining component |
+
+
+---
+
+### Solution 10.1 — EventEmitter fix
+
+```javascript
+import { EventEmitter } from 'events';
+
+const bus = new EventEmitter();
+
+function subscribe(userId, handler) {
+  bus.on('tick', handler);
+  return () => bus.off('tick', handler);
+}
+
+const unsubscribers = [];
+for (let i = 0; i < 15; i++) {
+  unsubscribers.push(subscribe(i, () => void i));
+}
+
+console.log('After subscribe:', bus.listenerCount('tick')); // 15
+
+unsubscribers.forEach((off) => off());
+
+console.log('After cleanup:', bus.listenerCount('tick')); // 0
+```
+
+---
+
 ### Solution 11.2 (memory dashboard)
+
+Full file: `javascript/memory-leak/labs/06-memory-dashboard.mjs`
 
 ```javascript
 setInterval(() => {
   const m = process.memoryUsage();
   console.log(
-    [new Date().toISOString(),
-     `rss=${(m.rss/1e6).toFixed(1)}`,
-     `heap=${(m.heapUsed/1e6).toFixed(1)}`,
-     `external=${(m.external/1e6).toFixed(1)}`,
-    ].join(' ')
+    [
+      new Date().toISOString(),
+      `rss=${(m.rss / 1e6).toFixed(1)}MB`,
+      `heapUsed=${(m.heapUsed / 1e6).toFixed(1)}MB`,
+      `heapTotal=${(m.heapTotal / 1e6).toFixed(1)}MB`,
+      `external=${(m.external / 1e6).toFixed(1)}MB`,
+      `arrayBuffers=${(m.arrayBuffers / 1e6).toFixed(1)}MB`,
+    ].join(' | ')
   );
 }, 5000);
 ```
+
+---
 
 ### Solution 14.1
 
@@ -1566,18 +2792,67 @@ setInterval(() => {
 
 ---
 
+### Solution Final — End-to-end challenge
+
+**Browser (React) — verify:**
+
+
+| Check                        | Before fix                               | After fix                      |
+| ---------------------------- | ---------------------------------------- | ------------------------------ |
+| JS event listeners           | Climbs each mount                        | Flat                           |
+| Pending fetch after navigate | Network completes + state update warning | Request aborted (`AbortError`) |
+| Snapshot Size Delta          | Positive `(closure)`                     | ≈ 0                            |
+
+
+**Node (Map cache) — verify:**
+
+
+| Check                            | Before fix   | After fix |
+| -------------------------------- | ------------ | --------- |
+| `cache.size` after 5000 requests | 5000         | ≤ 50      |
+| `rss` under steady curl load     | Linear climb | Plateaus  |
+
+
+**Minimal Node fix pattern:**
+
+```javascript
+const MAX = 50;
+const cache = new Map();
+// on set: if cache.size >= MAX, delete oldest key first
+```
+
+**Minimal React fix pattern:**
+
+```javascript
+useEffect(() => {
+  const controller = new AbortController();
+  const id = setInterval(() => {}, 1000);
+  fetch(url, { signal: controller.signal }).then(setData);
+  return () => {
+    clearInterval(id);
+    controller.abort();
+  };
+}, []);
+```
+
+---
+
 ## Quick Reference — Lab Files
 
-| File | Command | What you learn |
-|------|---------|----------------|
-| `01-reachability.mjs` | `node javascript/memory-leak/labs/01-reachability.mjs` | References prevent GC |
-| `02-global-array-leak.mjs` | `node javascript/memory-leak/labs/02-global-array-leak.mjs` | Unbounded global array |
-| `02-global-array-leak-FIXED.mjs` | `node javascript/memory-leak/labs/02-global-array-leak-FIXED.mjs` | Bounded ring buffer |
-| `03-leaky-cache-server.mjs` | `node javascript/memory-leak/labs/03-leaky-cache-server.mjs` | Map cache under load |
-| `04-event-emitter-leak.mjs` | `node javascript/memory-leak/labs/04-event-emitter-leak.mjs` | Listener accumulation |
-| `04-event-emitter-FIXED.mjs` | `node javascript/memory-leak/labs/04-event-emitter-FIXED.mjs` | Unsubscribe pattern |
-| `05-cycle-demo.mjs` | `node --expose-gc javascript/memory-leak/labs/05-cycle-demo.mjs` | Cycles vs global roots |
-| `06-memory-dashboard.mjs` | `node javascript/memory-leak/labs/06-memory-dashboard.mjs` | Live memory metrics |
+
+| File                             | Command                                                           | What you learn         |
+| -------------------------------- | ----------------------------------------------------------------- | ---------------------- |
+| `01-reachability.mjs`            | `node javascript/memory-leak/labs/01-reachability.mjs`            | References prevent GC  |
+| `02-global-array-leak.mjs`       | `node javascript/memory-leak/labs/02-global-array-leak.mjs`       | Unbounded global array |
+| `02-global-array-leak-FIXED.mjs` | `node javascript/memory-leak/labs/02-global-array-leak-FIXED.mjs` | Bounded ring buffer    |
+| `03-leaky-cache-server.mjs`      | `node javascript/memory-leak/labs/03-leaky-cache-server.mjs`      | Map cache under load   |
+| `04-event-emitter-leak.mjs`      | `node javascript/memory-leak/labs/04-event-emitter-leak.mjs`      | Listener accumulation  |
+| `04-event-emitter-FIXED.mjs`     | `node javascript/memory-leak/labs/04-event-emitter-FIXED.mjs`     | Unsubscribe pattern    |
+| `05-cycle-demo.mjs`              | `node --expose-gc javascript/memory-leak/labs/05-cycle-demo.mjs`  | Cycles vs global roots |
+| `06-memory-dashboard.mjs`        | `node javascript/memory-leak/labs/06-memory-dashboard.mjs`        | Live memory metrics    |
+| `07-generational-gc-demo.mjs`    | `node --expose-gc javascript/memory-leak/labs/07-generational-gc-demo.mjs` | Young temps vs survivors |
+| `08-critical-rule-demo.mjs`      | `node --expose-gc javascript/memory-leak/labs/08-critical-rule-demo.mjs`   | Reachable vs unreachable |
+
 
 ---
 
@@ -1593,8 +2868,12 @@ When you have completed all sections, do this **without looking at solutions**:
 6. Fix with max size 50.
 7. Verify memory plateaus in both browser and Node.
 
+**Expected result:** See [Solution Final — End-to-end challenge](#solution-final--end-to-end-challenge) for the verification table and fix patterns.
+
+**✓ You got it right if:** Browser listeners/heap delta stay flat after mount/unmount cycles **and** Node `cache.size` ≤ 50 with stable RSS under load.
+
 If you can complete the Final Challenge, you have practical leak detection skills — not just theory.
 
 ---
 
-*Companion performance topics: [`11-Frontend-Performance-Engineering-Complete-Guide.md`](../11-Frontend-Performance-Engineering-Complete-Guide.md) Sections 7–9.*
+*Companion performance topics: `[11-Frontend-Performance-Engineering-Complete-Guide.md](../11-Frontend-Performance-Engineering-Complete-Guide.md)` Sections 7–9.*
