@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab 01 — Measure Web Vitals with PerformanceObserver</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    pre { background: #111; color: #0f0; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+    .metric { margin: 0.5rem 0; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; }
+    .good { border-color: #2e7d32; background: #e8f5e9; }
+    .needs-improvement { border-color: #f9a825; background: #fff8e1; }
+    .poor { border-color: #c62828; background: #ffebee; }
+  </style>
+</head>
+<body>
+  <h1>Lab 01 — Measure Web Vitals</h1>
+  <p>Open DevTools → Console. Interact with the page (click, scroll). Watch metrics appear below.</p>
+
+  <button id="btn" style="padding: 1rem 2rem; font-size: 1.1rem;">Click me (INP test)</button>
+
+  <div id="hero" style="margin-top: 2rem; padding: 2rem; background: linear-gradient(135deg, #667eea, #764ba2); color: white; font-size: 2rem;">
+    Hero content — likely LCP candidate
+  </div>
+
+  <div id="output"></div>
+
+  <script type="module">
+    /**
+     * Lab 01 — Raw PerformanceObserver for LCP, CLS, and long tasks.
+     * Run: open this file in Chrome (or: npx serve javascript/web-vitals/labs)
+     */
+
+    const output = document.getElementById('output');
+
+    /** @param {string} name @param {number} value @param {[number, number]} thresholds */
+    function renderMetric(name, value, thresholds) {
+      const [good, ni] = thresholds;
+      let rating = 'poor';
+      if (value <= good) rating = 'good';
+      else if (value <= ni) rating = 'needs-improvement';
+
+      const div = document.createElement('div');
+      div.className = `metric ${rating}`;
+      div.textContent = `${name}: ${typeof value === 'number' ? value.toFixed(3) : value} (${rating})`;
+      output.appendChild(div);
+      console.log(`[${name}]`, { value, rating });
+    }
+
+    // ── LCP ────────────────────────────────────────────────────────
+    let lcpValue = 0;
+    const lcpObserver = new PerformanceObserver((list) => {
+      const entries = list.getEntries();
+      const last = entries[entries.length - 1];
+      lcpValue = last.renderTime || last.loadTime;
+      renderMetric('LCP (ms)', lcpValue, [2500, 4000]);
+    });
+    lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
+
+    // ── CLS ────────────────────────────────────────────────────────
+    let clsValue = 0;
+    const clsObserver = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (!entry.hadRecentInput) clsValue += entry.value;
+      }
+      renderMetric('CLS', clsValue, [0.1, 0.25]);
+    });
+    clsObserver.observe({ type: 'layout-shift', buffered: true });
+
+    // ── Long tasks (INP proxy in lab) ──────────────────────────────
+    const longTaskObserver = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        renderMetric('Long task (ms)', entry.duration, [50, 100]);
+      }
+    });
+    longTaskObserver.observe({ type: 'longtask', buffered: true });
+
+    // ── Simulate bad INP on click ──────────────────────────────────
+    document.getElementById('btn').addEventListener('click', () => {
+      const start = performance.now();
+      // Block main thread ~300ms — feels sluggish
+      while (performance.now() - start < 300) { /* busy wait */ }
+      document.getElementById('btn').textContent = `Clicked at ${Date.now()}`;
+    });
+
+    // Report on page hide (mirrors web-vitals library behavior)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        console.log('Final vitals:', { lcp: lcpValue, cls: clsValue });
+      }
+    });
+  </script>
+</body>
+</html>

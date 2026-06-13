@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab 02 — Slow LCP (BAD)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; }
+    .banner { padding: 1rem; background: #ffebee; color: #c62828; }
+    .hero { width: 100%; max-width: 800px; margin: 2rem auto; }
+  </style>
+</head>
+<body>
+  <div class="banner">⚠ Lab 02 — Intentionally slow LCP. Run Lighthouse after load.</div>
+
+  <!-- Render-blocking CSS simulated by huge inline style block -->
+  <style>
+    /* 50KB of fake CSS to delay first paint */
+    .dummy { color: #111; }
+    .dummy2 { color: #222; }
+    .dummy3 { color: #333; }
+  </style>
+
+  <h1 style="padding: 1rem;">Product Page</h1>
+
+  <!-- BAD: No dimensions, no preload, huge image, lazy would be worse but we use sync load -->
+  <div class="hero">
+    <img
+      id="hero-img"
+      alt="Hero product"
+      width="800"
+      height="600"
+      src="https://picsum.photos/seed/slowlcp/2400/1800"
+    />
+  </div>
+
+  <!-- BAD: Render-blocking script at bottom still delays interactivity -->
+  <script>
+    // Simulate 200ms parse/execute before anything else runs
+    const t0 = performance.now();
+    while (performance.now() - t0 < 200) {}
+    console.log('Blocking script finished');
+  </script>
+
+  <script type="module">
+    import { onLCP } from 'https://unpkg.com/web-vitals@4/dist/web-vitals.attribution.js?module';
+    onLCP((metric) => {
+      console.log('LCP (slow page):', metric);
+      const el = document.createElement('pre');
+      el.textContent = JSON.stringify(metric, null, 2);
+      document.body.appendChild(el);
+    });
+  </script>
+</body>
+</html>

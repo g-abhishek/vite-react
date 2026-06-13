@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab 04 — INP / Long Tasks</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; }
+    .row { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+    button { padding: 1rem 1.5rem; font-size: 1rem; cursor: pointer; }
+    .bad { background: #ffcdd2; }
+    .good { background: #c8e6c9; }
+    #log { background: #111; color: #0f0; padding: 1rem; font-family: monospace; min-height: 120px; }
+  </style>
+</head>
+<body>
+  <h1>Lab 04 — INP &amp; Long Tasks</h1>
+  <p>Click both buttons. The "bad" one blocks the main thread; the "good" one yields.</p>
+
+  <div class="row">
+    <button class="bad" id="bad-btn">Bad click (300ms sync work)</button>
+    <button class="good" id="good-btn">Good click (chunked work)</button>
+  </div>
+
+  <div id="log"></div>
+
+  <script type="module">
+    import { onINP } from 'https://unpkg.com/web-vitals@4/dist/web-vitals.attribution.js?module';
+
+    const log = document.getElementById('log');
+    const write = (msg) => { log.textContent += msg + '\n'; console.log(msg); };
+
+    onINP((metric) => {
+      write(`INP: ${metric.value}ms (${metric.rating})`);
+      if (metric.attribution) write(`  attribution: ${JSON.stringify(metric.attribution)}`);
+    });
+
+    // ── BAD: Synchronous heavy work on click ─────────────────────
+    document.getElementById('bad-btn').addEventListener('click', () => {
+      const t0 = performance.now();
+      while (performance.now() - t0 < 300) {}
+      write(`Bad click handled at ${performance.now().toFixed(0)}ms`);
+    });
+
+    // ── GOOD: Break work into chunks via scheduler.yield or setTimeout ──
+    document.getElementById('good-btn').addEventListener('click', async () => {
+      const t0 = performance.now();
+      // Process in 50ms chunks — browser can paint between chunks
+      for (let i = 0; i < 6; i++) {
+        const chunkStart = performance.now();
+        while (performance.now() - chunkStart < 50) {}
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      write(`Good click handled at ${(performance.now() - t0).toFixed(0)}ms total (chunked)`);
+    });
+
+    // Log long tasks
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        write(`Long task detected: ${e.duration.toFixed(0)}ms`);
+      }
+    }).observe({ type: 'longtask', buffered: true });
+  </script>
+</body>
+</html>

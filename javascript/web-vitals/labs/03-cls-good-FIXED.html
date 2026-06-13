@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab 03 — CLS Good (FIXED)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; }
+    .banner { background: #e8f5e9; padding: 1rem; margin-bottom: 1rem; }
+    /* GOOD: Reserve space for ad before it loads */
+    .ad-slot { min-height: 250px; background: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #999; }
+    button { padding: 0.75rem 1.5rem; font-size: 1rem; }
+    /* GOOD: Match fallback font metrics to reduce swap shift */
+    h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 2rem; min-height: 2.5rem; }
+  </style>
+  <!-- GOOD: font-display: swap + fallback with similar metrics -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="banner">✓ Lab 03 FIXED — Ad slot reserved; headline has min-height</div>
+
+  <p>Read this paragraph. Content should NOT jump when the ad loads.</p>
+
+  <div id="ad-slot" class="ad-slot">Ad loading…</div>
+
+  <button id="cta">Buy now</button>
+
+  <h2 style="font-family: 'Playfair Display', Georgia, serif;">Premium Headline</h2>
+
+  <script type="module">
+    import { onCLS } from 'https://unpkg.com/web-vitals@4/dist/web-vitals.attribution.js?module';
+
+    onCLS((metric) => {
+      console.log('CLS (fixed):', metric);
+      const pre = document.createElement('pre');
+      pre.textContent = `CLS: ${metric.value.toFixed(4)} — ${metric.rating}`;
+      document.body.appendChild(pre);
+    });
+
+    setTimeout(() => {
+      const slot = document.getElementById('ad-slot');
+      slot.style.background = '#ffc107';
+      slot.style.color = '#000';
+      slot.textContent = 'AD BANNER (loaded late — no shift)';
+    }, 1500);
+  </script>
+</body>
+</html>

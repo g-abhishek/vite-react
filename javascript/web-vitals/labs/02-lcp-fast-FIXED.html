@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab 02 — Fast LCP (FIXED)</title>
+
+  <!-- GOOD: Preload LCP image — browser starts download before parser reaches <img> -->
+  <link rel="preload" as="image" href="https://picsum.photos/seed/fastlcp/800/600" fetchpriority="high" />
+
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; }
+    .banner { padding: 1rem; background: #e8f5e9; color: #2e7d32; }
+    .hero { width: 100%; max-width: 800px; margin: 2rem auto; aspect-ratio: 4/3; }
+    .hero img { width: 100%; height: auto; display: block; }
+    .skeleton { background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; aspect-ratio: 4/3; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+  <div class="banner">✓ Lab 02 FIXED — Compare Lighthouse LCP with 02-lcp-slow.html</div>
+
+  
+
+  <div class="hero">
+    <!-- GOOD: Explicit dimensions prevent CLS; smaller image; fetchpriority -->
+    <img
+      alt="Hero product"
+      width="800"
+      height="600"
+      fetchpriority="high"
+      decoding="async"
+      src="https://picsum.photos/seed/fastlcp/800/600"
+    />
+  </div>
+
+  <h1 style="padding: 1rem;">Product Page</h1>
+
+  <!-- GOOD: Non-blocking — defer heavy work -->
+  <script defer>
+    console.log('Deferred script — does not block parse');
+  </script>
+
+  <script type="module">
+    import { onLCP } from 'https://unpkg.com/web-vitals@4/dist/web-vitals.attribution.js?module';
+    onLCP((metric) => {
+      console.log('LCP (fast page):', metric);
+      const el = document.createElement('pre');
+      el.style.padding = '1rem';
+      el.textContent = JSON.stringify(metric, null, 2);
+      document.body.appendChild(el);
+    });
+  </script>
+</body>
+</html>

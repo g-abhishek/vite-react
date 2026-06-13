@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab 03 — CLS Bad (no reserved space)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; }
+    .banner { background: #ffebee; padding: 1rem; margin-bottom: 1rem; }
+    button { padding: 0.75rem 1.5rem; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="banner">⚠ Lab 03 — Watch content jump when ad and font load</div>
+
+  <p>Read this paragraph. When the ad loads below, everything shifts down — bad CLS.</p>
+
+  <!-- BAD: No reserved height — ad injects and pushes content -->
+  <div id="ad-slot"></div>
+
+  <button id="cta">Buy now</button>
+
+  <!-- BAD: Web font without size-adjust / fallback metrics -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display&display=swap" rel="stylesheet" />
+  <h2 style="font-family: 'Playfair Display', serif; font-size: 2rem;">Premium Headline</h2>
+
+  <script type="module">
+    import { onCLS } from 'https://unpkg.com/web-vitals@4/dist/web-vitals.attribution.js?module';
+
+    onCLS((metric) => {
+      console.log('CLS (bad):', metric);
+      const pre = document.createElement('pre');
+      pre.textContent = `CLS: ${metric.value.toFixed(4)} — ${metric.rating}`;
+      document.body.appendChild(pre);
+    });
+
+    // Simulate late-loading ad banner (common CLS cause)
+    setTimeout(() => {
+      const ad = document.createElement('div');
+      ad.style.cssText = 'height:250px;background:#ffc107;display:flex;align-items:center;justify-content:center;font-weight:bold;';
+      ad.textContent = 'AD BANNER (loaded late)';
+      document.getElementById('ad-slot').appendChild(ad);
+    }, 1500);
+  </script>
+</body>
+</html>
