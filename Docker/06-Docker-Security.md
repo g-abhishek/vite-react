@@ -10,6 +10,7 @@
 2. [Why Security Matters — The Problems It Solves](#2-why-security-matters--the-problems-it-solves)
 3. [Core Concepts & Mental Models](#3-core-concepts--mental-models)
 4. [Image Security — Build Time](#4-image-security--build-time)
+   - [Practice 1: Don't run as root (USER walkthrough)](#practice-1-dont-run-as-root)
 5. [Runtime Security — Run Time](#5-runtime-security--run-time)
 6. [Network & Secret Security](#6-network--secret-security)
 7. [Scanning & CI/CD Integration](#7-scanning--cicd-integration)
@@ -119,15 +120,47 @@ Pull random image from Docker Hub — backdoor preinstalled.
 
 **Scenario:** RCE in your Node app — attacker gets shell.
 
-**BAD:**
+**What `USER` does:** Selects which Linux user runs your app. It does **not** create that user — you or the base image must do that first.
+
+**Full step-by-step guide (create vs built-in user, `COPY --chown`, order, pitfalls):**  
+→ [`02-Dockerfile.md` § USER — Creating Users & Running Non-Root](./02-Dockerfile.md#user--creating-users--running-non-root-step-by-step)
+
+#### Quick decision
+
+| Base image | Create user? | Typical line |
+|------------|--------------|--------------|
+| `node:*` | No — use built-in `node` | `USER node` |
+| `python:*`, bare `alpine` | Yes | `RUN addgroup ... && adduser ...` then `USER app` |
+| `distroless/*` | No — use `nonroot` | `USER nonroot` |
+
+#### Verify a user exists (before `USER`)
+
+```bash
+docker run --rm node:20-alpine cat /etc/passwd | grep node
+docker run --rm node:20-alpine id node
+```
+
+#### BAD — runs as root (default when `USER` omitted)
 
 ```dockerfile
 FROM node:18-alpine
 COPY . .
-CMD ["node", "server.js"]   # runs as root
+CMD ["node", "server.js"]   # runs as root (uid 0)
 ```
 
-**GOOD:**
+#### GOOD — built-in `node` user (no adduser)
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY --chown=node:node package*.json ./
+RUN npm ci --omit=production
+COPY --chown=node:node . .
+USER node
+CMD ["node", "server.js"]
+```
+
+#### GOOD — custom `app` user (when image has no built-in user)
 
 ```dockerfile
 FROM node:18-alpine
@@ -140,7 +173,25 @@ USER app
 CMD ["node", "server.js"]
 ```
 
-**How it helps:** Attacker is UID 1000 in container, not root — harder to exploit kernel bugs.
+#### Step order (why it matters)
+
+```
+1. FROM / WORKDIR
+2. RUN adduser     ← only if no built-in user
+3. RUN npm ci      ← as root (install needs write access)
+4. COPY --chown    ← app files owned by non-root user
+5. USER app|node   ← switch before CMD
+6. CMD             ← runtime process is non-root
+```
+
+**How it helps:** Attacker gets shell as uid 1000, not root — cannot install packages, limited file access, harder kernel escape.
+
+**Verify after build:**
+
+```bash
+docker build -t my-api .
+docker run --rm my-api whoami   # node or app, not root
+```
 
 ---
 
@@ -618,7 +669,7 @@ Container can control host Docker — **equivalent to root on host**. Only in tr
 
 | Practice | How |
 |----------|-----|
-| Non-root | `USER app` in Dockerfile |
+| Non-root | `USER node` or `USER app` — [full walkthrough](./02-Dockerfile.md#user--creating-users--running-non-root-step-by-step) |
 | Small image | alpine / slim / distroless + multi-stage |
 | No secrets in image | runtime `-e`, BuildKit `--secret` |
 | Pin versions | `node:18.17.0-alpine3.18@sha256:...` |

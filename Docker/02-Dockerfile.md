@@ -11,6 +11,7 @@
 3. [Core Concepts & Mental Models](#3-core-concepts--mental-models)
    - [Why `COPY package*.json` → `npm ci` → `COPY . .`?](#why-copy-packagejson--npm-ci--copy--)
 4. [Instruction Reference — One by One](#4-instruction-reference--one-by-one)
+   - [USER — Creating Users & Running Non-Root (step by step)](#user--creating-users--running-non-root-step-by-step)
 5. [CMD vs ENTRYPOINT — The Confusion Killer](#5-cmd-vs-entrypoint--the-confusion-killer)
 6. [Building Images — Commands & Workflow](#6-building-images--commands--workflow)
 7. [Complete Dockerfile Examples](#7-complete-dockerfile-examples)
@@ -487,16 +488,467 @@ VOLUME /var/lib/postgresql/data
 
 ### `USER` — Run as non-root
 
-**What:** Switch user for subsequent instructions and container runtime.
+**What:** Switch the Linux user for all subsequent Dockerfile instructions and for the container's main process at runtime.
 
 ```dockerfile
-RUN addgroup -S app && adduser -S app -G app
-COPY --chown=app:app . .
 USER app
+```
+
+**Critical rule:** `USER` **selects** a user — it does **not create** one. See the full walkthrough below.
+
+**Quick pointer:** [USER — Creating Users & Running Non-Root (step by step)](#user--creating-users--running-non-root-step-by-step)
+
+---
+
+### USER — Creating Users & Running Non-Root (step by step)
+
+> **The question this answers:** "Do I create a user myself, or does the base image already have one? How do I wire it up correctly?"
+
+#### 1. What `USER` actually does
+
+Every process in Linux runs as a **user** identified by a numeric **UID** (user ID) and **GID** (group ID).
+
+```
+Without USER in Dockerfile:
+  CMD ["node", "server.js"]  →  runs as root (uid 0) inside container
+
+With USER app:
+  CMD ["node", "server.js"]  →  runs as app (e.g. uid 1000) inside container
+```
+
+`USER` affects:
+
+| When | What runs as that user |
+|------|-------------------------|
+| **Build time** | Every `RUN`, `CMD`, `ENTRYPOINT` **after** the `USER` line |
+| **Run time** | The main process started by `CMD` / `ENTRYPOINT` |
+| **`docker exec`** | Default user when you `docker exec -it container sh` (unless `-u`) |
+
+`USER` does **not**:
+
+- Create the user (you or the base image must do that first)
+- Change ownership of files already copied as root (use `COPY --chown` or `chown`)
+- Map to your Mac/Windows login user (container users live inside the container/VM)
+
+#### 2. Why use non-root? — The problem without it
+
+Containers share the **host kernel**. If an attacker exploits your app (bad dependency, injection, RCE), they get a shell as whatever user your process runs as.
+
+```
+Attacker exploits Node API
+         │
+         ▼
+┌────────────────────────────────────────────────────────┐
+│  Running as ROOT (uid 0)          Running as app       │
+│  ───────────────────────          ────────────────     │
+│  Read/write any file in container Read/write only      │
+│  Install packages (apk/apt)       owned files          │
+│  Modify system configs            Limited damage       │
+│  Better chance at container       Harder to escalate   │
+│  escape exploits                  privileges          │
+└────────────────────────────────────────────────────────┘
+```
+
+**Principle:** **Least privilege** — the app only needs to read its code and write logs/cache, not act as system administrator.
+
+Security deep-dive: `06-Docker-Security.md` § Practice 1.
+
+#### 3. Is the user already created? — Decision flow
+
+```
+Need non-root USER in Dockerfile?
+         │
+         ▼
+Does official image document a built-in user?
+         │
+    YES ─┴─ NO
+     │       │
+     ▼       ▼
+ Use it    Create your own
+ (USER      (RUN adduser /
+  node)      useradd)
+     │       │
+     └───────┴──► COPY --chown → USER → CMD
+```
+
+**Common base images — built-in users:**
+
+| Base image | Built-in user | UID (typical) | Action |
+|------------|---------------|---------------|--------|
+| `node:*` | `node` | 1000 | `USER node` — no `adduser` needed |
+| `postgres:*` | `postgres` | 70 | Already runs as postgres |
+| `mongo:*` | `mongodb` | — | Already runs as mongodb |
+| `nginx:*` | `nginx` | — | Already runs as nginx |
+| `python:*` | *(none)* | — | Create your own `app` user |
+| `golang:*` | *(none)* | — | Create your own `app` user |
+| `alpine` / `ubuntu` bare | *(none)* | — | Create your own `app` user |
+| `distroless/*` | `nonroot` | 65532 | `USER nonroot` |
+
+#### 4. Step-by-step: verify if a user exists
+
+Before writing `USER something`, confirm the user is in the image.
+
+**Step 1 — Inspect the base image:**
+
+```bash
+docker run --rm node:20-alpine cat /etc/passwd | grep node
+# node:x:1000:1000:Linux User,,,:/home/node:/bin/sh
+```
+
+**Step 2 — Check UID/GID:**
+
+```bash
+docker run --rm node:20-alpine id node
+# uid=1000(node) gid=1000(node) groups=1000(node),...
+```
+
+**Step 3 — See who runs by default (no USER in Dockerfile):**
+
+```bash
+docker run --rm node:20-alpine whoami
+# root   ← official node image defaults to root until YOU add USER node
+```
+
+`/etc/passwd` format: `username:x:UID:GID:comment:home:shell`
+
+#### 5. Path A — Use the pre-created `node` user (Node.js apps)
+
+Official `node` images ship with a `node` user. **You do not run `adduser`.**
+
+**Step-by-step Dockerfile:**
+
+```dockerfile
+# ── Step 1: Base image ────────────────────────────────────────
+FROM node:20-alpine
+WORKDIR /app
+
+# ── Step 2: Install deps AS ROOT (needs write to /app) ────────
+# Why root here: npm ci writes to node_modules with root ownership
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# ── Step 3: Copy app code WITH correct ownership ──────────────
+# Why --chown: after USER node, process must read these files
+COPY --chown=node:node . .
+
+# ── Step 4: Switch to non-root ────────────────────────────────
+USER node
+
+# ── Step 5: Runtime (runs as node, uid 1000) ──────────────────
+EXPOSE 3000
 CMD ["node", "server.js"]
 ```
 
-**How it helps:** If attacker escapes container process, they're not root on host. See `06-Docker-Security.md`.
+**Walkthrough of what happens at build + run:**
+
+```
+Build:
+  FROM node:20-alpine     → active user: root
+  RUN npm ci              → node_modules owned by root
+  COPY --chown=node:node  → app files owned by node
+  USER node               → recorded in image config (runtime user)
+
+Run:
+  docker run my-api
+  → kernel starts node server.js as uid 1000 (node)
+  → process cannot apt-get install, cannot chown /etc
+```
+
+**Verify after build:**
+
+```bash
+docker build -t my-api .
+docker run --rm my-api whoami
+# node
+
+docker run --rm my-api id
+# uid=1000(node) gid=1000(node) groups=1000(node)
+```
+
+#### 6. Path B — Create your own `app` user (custom name / non-Node images)
+
+Use when the base image has **no** app user, or you want a consistent `app` user across Python, Go, and Node.
+
+**Alpine** (`node:alpine`, `python:alpine`):
+
+```dockerfile
+RUN addgroup -S app && adduser -S app -G app
+```
+
+| Part | Meaning |
+|------|---------|
+| `addgroup -S app` | Create system group `app` (`-S` = system on Alpine) |
+| `adduser -S app -G app` | Create system user `app` in group `app` |
+| `-S` | "System" account — no login password, minimal setup |
+
+**Debian/Ubuntu** (`node:slim`, `python:slim`):
+
+```dockerfile
+RUN groupadd -r app && useradd -r -g app -m app
+```
+
+| Part | Meaning |
+|------|---------|
+| `groupadd -r app` | System group |
+| `useradd -r -g app -m app` | System user, home dir `-m` |
+
+**Full Alpine example — every step:**
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+
+# Step 1: CREATE the user (USER alone would fail without this)
+RUN addgroup -S app && adduser -S app -G app
+
+# Step 2: Install dependencies as root
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Step 3: Transfer ownership of entire app dir to app
+COPY --chown=app:app . .
+# Alternative if you forgot --chown:
+# RUN chown -R app:app /app
+
+# Step 4: Switch user for runtime
+USER app
+
+# Step 5: Start app
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+**What fails if you skip Step 1:**
+
+```dockerfile
+USER app    # ERROR: unable to find user app: no matching entries in passwd file
+```
+
+#### 7. Dockerfile instruction order — why it matters
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  CORRECT ORDER                                               │
+├─────────────────────────────────────────────────────────────┤
+│  1. FROM / WORKDIR                                           │
+│  2. RUN adduser (if needed)                                  │
+│  3. COPY package*.json + RUN npm ci / pip install  (root)    │
+│  4. COPY --chown=app:app source code                         │
+│  5. USER app                                                 │
+│  6. EXPOSE / HEALTHCHECK / CMD                               │
+└─────────────────────────────────────────────────────────────┘
+
+WRONG: USER app before npm ci
+  → npm may lack permission to write node_modules
+
+WRONG: COPY . . as root, then USER app, no --chown
+  → app cannot read files OR cannot write logs → EACCES
+```
+
+**Temporary root for one install step:**
+
+```dockerfile
+USER root
+RUN apk add --no-cache curl    # needs root
+USER app                        # back to non-root before CMD
+CMD ["node", "server.js"]
+```
+
+#### 8. `COPY --chown` — ownership step explained
+
+Linux files have an **owner**. Processes can only access files the owner (or group/world) permits.
+
+```dockerfile
+COPY . .                  # files owned by root:root
+USER app
+CMD ["node", "server.js"] # app (uid 1000) may fail to write ./logs
+```
+
+**Fix:**
+
+```dockerfile
+COPY --chown=app:app . .
+USER app
+```
+
+Or fix ownership in one shot after all copies:
+
+```dockerfile
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+RUN chown -R app:app /app
+USER app
+```
+
+#### 9. Container user vs host user (Mac / Windows / Linux)
+
+| Environment | What you should know |
+|-------------|----------------------|
+| **Mac / Windows (Docker Desktop)** | Container UIDs live inside a Linux VM. Your Mac user is unrelated. Focus on **not being root inside the container**. |
+| **Linux (native Docker)** | Container UID 1000 might map to host UID 1000 in some setups — bind-mount permission issues are more visible. |
+| **Override at run time** | `docker run -u 1000:1000 my-api` or Compose `user: "1000:1000"` |
+
+#### 10. Bind mounts + non-root — common permission pitfall
+
+```dockerfile
+USER node
+```
+
+```bash
+docker run -v "$(pwd)/data:/app/data" my-api
+```
+
+If `./data` on the host is owned by your Mac user but the container runs as `node` (uid 1000), writes may fail with **EACCES**.
+
+**Fixes:**
+
+| Fix | When |
+|-----|------|
+| `chown 1000:1000 ./data` on host (Linux) | UID matches container user |
+| Compose `user: "${UID}:${GID}"` | Align container with host user |
+| Named volume instead of bind mount | Docker manages storage; fewer UID clashes |
+| Dev only: run as root | Not for production |
+
+Details: `05-Docker-Volumes.md`.
+
+#### 11. Override `USER` at runtime (debug only)
+
+```bash
+# See what user the image uses by default
+docker run --rm my-api whoami
+
+# Override to root for emergency debug (avoid in prod)
+docker run -u root -it my-api sh
+
+# Force specific UID
+docker run -u 1000:1000 my-api
+```
+
+Compose:
+
+```yaml
+services:
+  api:
+    image: my-api
+    user: "1000:1000"   # overrides Dockerfile USER
+```
+
+#### 12. Distroless — pre-created `nonroot` user
+
+Distroless images have no shell and ship with user `nonroot` (uid 65532):
+
+```dockerfile
+FROM gcr.io/distroless/nodejs20-debian12
+WORKDIR /app
+COPY --chown=nonroot:nonroot . .
+USER nonroot
+CMD ["server.js"]
+```
+
+You **cannot** `docker exec` bash into distroless — plan a separate debug image tag.
+
+#### 13. Flow diagram — end to end
+
+```
+docker build
+     │
+     ▼
+FROM node:20-alpine ──────────► default build user: root
+     │
+     ▼
+RUN adduser (optional) ───────► app user exists in image layer
+     │
+     ▼
+RUN npm ci ───────────────────► node_modules created (root-owned OK)
+     │
+     ▼
+COPY --chown=node:node . . ───► source owned by node
+     │
+     ▼
+USER node ────────────────────► image metadata: run as node
+     │
+     ▼
+CMD ["node", "server.js"]
+     │
+     ▼
+docker run my-api
+     │
+     ▼
+Process: node server.js as uid 1000 ✓
+```
+
+#### 14. Pros & cons
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| `USER node` (official image) | No `adduser`; well-tested | Tied to node image conventions |
+| Custom `app` user | Same pattern across stacks | Extra Dockerfile lines |
+| Run as root | Simplest; no permission tuning | Major security risk in production |
+| `docker run -u` override | Quick debug | Easy to forget; prod misconfig |
+| Distroless + `nonroot` | Minimal attack surface | No shell for debugging |
+
+#### 15. Quick reference
+
+| Question | Answer |
+|----------|--------|
+| Does `USER` create a user? | **No** — only selects an existing one |
+| `node` image — create user? | **No** — use built-in `node` |
+| Bare `alpine` — create user? | **Yes** — `addgroup` + `adduser` |
+| When to switch `USER`? | After installs, **before** `CMD` |
+| Must pair with? | `COPY --chown` or `chown -R` |
+| Default if omitted? | **root** (uid 0) |
+| Production rule? | Always non-root `USER` |
+
+#### 16. BAD vs GOOD summary
+
+**BAD — no user, runs as root:**
+
+```dockerfile
+FROM node:20-alpine
+COPY . .
+CMD ["node", "server.js"]
+```
+
+**BAD — USER without creating user:**
+
+```dockerfile
+FROM alpine
+USER app    # build fails — app does not exist
+```
+
+**BAD — USER without chown:**
+
+```dockerfile
+FROM node:20-alpine
+COPY . .
+USER node   # may start, but EACCES on writes to cwd
+```
+
+**GOOD — built-in `node` user:**
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY --chown=node:node package*.json ./
+RUN npm ci --omit=dev
+COPY --chown=node:node . .
+USER node
+CMD ["node", "server.js"]
+```
+
+**GOOD — custom `app` user:**
+
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+RUN groupadd -r app && useradd -r -g app -m app
+COPY --chown=app:app requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY --chown=app:app . .
+USER app
+CMD ["python", "app.py"]
+```
 
 ---
 
@@ -1539,7 +1991,7 @@ Packaging your app?
 | `ENV` | Runtime config defaults |
 | `ARG` | Version pins at build time |
 | `HEALTHCHECK` | Orchestration / depends_on healthy |
-| `USER` | Always in production |
+| `USER` | Always in production — [step-by-step walkthrough](#user--creating-users--running-non-root-step-by-step) |
 
 ---
 
@@ -1607,7 +2059,13 @@ docker run -e API_KEY=$API_KEY my-api
 
 **BAD:** No `USER` line — container runs as root.
 
-**GOOD:** Create user, `COPY --chown`, `USER app`.
+**BAD:** `USER app` without `adduser` — build fails ("unable to find user app").
+
+**BAD:** `USER node` without `COPY --chown=node:node` — runtime `EACCES` on writes.
+
+**GOOD:** Create user (if needed) → `COPY --chown` → `USER` → `CMD`.
+
+Full walkthrough: [USER — Creating Users & Running Non-Root](./02-Dockerfile.md#user--creating-users--running-non-root-step-by-step).
 
 ---
 
@@ -1646,7 +2104,7 @@ docker run -e API_KEY=$API_KEY my-api
 | `ENV` | Runtime env | defaults |
 | `ARG` | Build-only vars | `--build-arg` |
 | `EXPOSE` | Document port | still need `-p` |
-| `USER` | Non-root | production must |
+| `USER` | Non-root | [create user + `--chown` + order](#user--creating-users--running-non-root-step-by-step) |
 | `HEALTHCHECK` | Readiness | for Compose depends |
 | `CMD` | Default command | easy override |
 | `ENTRYPOINT` | Fixed executable | CLI pattern |
